@@ -52,6 +52,12 @@ const CHARGE_SPEED := 150.0         # px/s, out and back
 const CHARGE_GAP := 36.0            # it stops this far from the mouse it is fighting
 const MELEE_CONTACT := 52.0         # a melee cat hits any mouse within this distance
 const COST_GROWTH := 1.35
+
+# Action sprites (art_src/*.webp -> tools/extract_sheet.gd -> art/<cat>_anim.png): 4 x 2 cells of ANIM_CELL,
+# every frame aligned on ANIM_ANCHOR (the ground point under the cat). Cats without an atlas use their portrait card.
+const ANIM_CELL := Vector2(160.0, 112.0)
+const ANIM_ANCHOR := Vector2(80.0, 84.0)
+const ANIM_COLS := 4
 const MAX_CAT_LEVEL := 5
 const LEVEL_STAT_STEP := 0.2        # each cat level adds this much to health and damage (level 1 = x1.0)
 const LEVEL_COST_FACTOR := 2.0      # level-up cost = base cost * this * LEVEL_COST_GROWTH ^ (level - 1)
@@ -99,6 +105,7 @@ var banner_t := 0.0
 
 var rng := RandomNumberGenerator.new()
 var textures := {}
+var anim_tex := {}   # cat key -> action sprite atlas
 var fx := Fx.new()
 var slashes: Array = []   # {pos, t}: melee slash arcs
 
@@ -110,6 +117,9 @@ func _ready() -> void:
 		var path := "res://games/catdrop/art/%s.png" % k
 		if ResourceLoader.exists(path):
 			textures[k] = load(path)
+		var anim_path := "res://games/catdrop/art/%s_anim.png" % k
+		if ResourceLoader.exists(anim_path):
+			anim_tex[k] = load(anim_path)
 
 
 func _init_grid() -> void:
@@ -281,7 +291,7 @@ func start_wave() -> bool:
 		else:
 			var key: String = grid[i]
 			var hp: float = float(CAT_TYPES[key]["hp"]) * level_mult(key)
-			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "x": tile_center(i).x, "y": tile_center(i).y, "target": null, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false})
+			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "x": tile_center(i).x, "y": tile_center(i).y, "target": null, "face": 1.0, "n_atk": 0, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false})
 	enemies.clear()
 	tracers.clear()
 	floaters.clear()
@@ -388,6 +398,8 @@ func _move_melee(i: int, dt: float) -> void:
 		var tp := Vector2(float(target["x"]), float(target["y"]))
 		var gap := pos.distance_to(tp)
 		goal = pos if gap <= CHARGE_GAP else tp + (pos - tp).normalized() * CHARGE_GAP
+		if absf(tp.x - pos.x) > 4.0:
+			cat["face"] = signf(tp.x - pos.x)
 		if gap <= MELEE_CONTACT and int(target["held_by"]) < 0:
 			target["held_by"] = i
 	var np := pos.move_toward(goal, CHARGE_SPEED * dt)
@@ -496,6 +508,7 @@ func step(dt: float) -> void:
 		target["hp"] = float(target["hp"]) - dmg
 		cat["cd"] = float(def["interval"])
 		cat["atk_t"] = 0.0
+		cat["n_atk"] = int(cat["n_atk"]) + 1
 		if def["kind"] == "melee":
 			slashes.append({"pos": Vector2(float(target["x"]), float(target["y"])), "t": 0.2})
 		var from := cat_pos(i)
@@ -634,9 +647,46 @@ func _draw_cat_card(key: String, rect: Rect2, dead: bool) -> void:
 		draw_rect(rect, Color(0.0, 0.0, 0.0, 0.6))
 
 
+func _sprite_frame(cat: Dictionary) -> int:
+	# Which atlas frame: idle 0, wind-up 1, lunge 2, swipe 3, bite 4, impact 5, retreat 6, landing 7.
+	var atk := float(cat["atk_t"])
+	if atk < 0.41:
+		if atk < 0.07:
+			return 2
+		if atk < 0.17:
+			return 3 if int(cat["n_atk"]) % 2 == 1 else 4
+		if atk < 0.25:
+			return 5
+		if atk < 0.33:
+			return 6
+		return 7
+	if cat["moving"]:
+		return 2 if int(float(cat["phase"]) / 3.0) % 2 == 0 else 6   # gallop: stretched out, then gathered
+	return 0
+
+
+func _draw_cat_sprite(i: int, center: Vector2, dead: bool) -> void:
+	var key: String = grid[i]
+	var cat = cats[i] if active and cats.size() == COLS * ROWS else null
+	var frame := 0
+	var face := 1.0
+	if cat != null:
+		face = float(cat["face"])
+		if not dead:
+			frame = _sprite_frame(cat)
+	var ground := center + Vector2(0.0, 18.0)
+	var src := Rect2(Vector2(float(frame % ANIM_COLS) * ANIM_CELL.x, float(frame / ANIM_COLS) * ANIM_CELL.y), ANIM_CELL)
+	draw_set_transform(ground, 0.0, Vector2(face, 1.0))
+	draw_texture_rect_region(anim_tex[key], Rect2(-ANIM_ANCHOR, ANIM_CELL), src, Color(1.0, 1.0, 1.0, 0.4) if dead else Color.WHITE)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _draw_cat_anim(i: int, center: Vector2, dead: bool) -> void:
 	# A cat card with simple procedural animation: bob and lean while running, lunge and pop on attack.
 	var key: String = grid[i]
+	if anim_tex.has(key):
+		_draw_cat_sprite(i, center, dead)
+		return
 	var cat = cats[i] if active and cats.size() == COLS * ROWS else null
 	var off := Vector2.ZERO
 	var rot := 0.0

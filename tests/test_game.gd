@@ -232,7 +232,7 @@ func _ready() -> void:
 	check("he goes to mice in other lanes, not just his own", max_side > 60.0)
 	check("a mouse he has hold of stops advancing", held_seen and held_still)
 	check("Macho alone clears wave 1 by fighting mice up the field", bt.house_hp > 0.0 and bt.wave == 2)
-	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "x": home.x + 50.0, "y": home.y - 150.0, "target": null, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false}
+	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "x": home.x + 50.0, "y": home.y - 150.0, "target": null, "face": 1.0, "n_atk": 0, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false}
 	bt.enemies = []
 	bt.spawn_queue = ["mouse"]
 	bt.spawn_timer = 1000.0
