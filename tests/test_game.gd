@@ -199,45 +199,47 @@ func _ready() -> void:
 	check("boss appears on wave 10", saw_boss)
 	check("10 well-placed cats beat the boss, run completes", b2.wave == 1 and m2.coins >= before + 15 * 10 + 200)
 
-	# Melee charge: Macho runs out of his tile up his lane, within the leash, and comes home
+	# Melee charge: Macho runs to the most advanced mouse anywhere (any lane, no leash), holds it, and comes home
 	var bt = load("res://games/catdrop/battle.gd").new()
 	add_child(bt)
 	bt.owned = {"macho": 1, "rosette": 0}
 	for i in 16:
 		bt.grid[i] = ""
 	bt.grid[8] = "macho"
-	bt.wave = 3
+	bt.wave = 1
 	bt.start_wave()
-	var home_y: float = bt.tile_center(8).y
-	var min_y := 99999.0
-	var saw_charge := false
-	var blocked_ok := true
+	var home: Vector2 = bt.tile_center(8)
+	var max_dist := 0.0
+	var max_side := 0.0
+	var held_seen := false
+	var held_still := true
+	var prev_y := {}
 	var csteps := 0
 	while bt.active and csteps < 20000:
 		bt.step(1.0 / 12.0)
 		csteps += 1
-		if bt.cats[8] == null:
-			continue
-		var cy: float = bt.cats[8]["y"]
-		min_y = minf(min_y, cy)
-		if bt.is_charging(8):
-			saw_charge = true
+		var cp: Vector2 = bt.cat_pos(8)
+		max_dist = maxf(max_dist, cp.distance_to(home))
+		max_side = maxf(max_side, absf(cp.x - home.x))
 		for e in bt.enemies:
-			if absf(float(e["x"]) - bt.tile_center(8).x) < 48.0 and bt.cats[8]["alive"]:
-				# no mouse in this lane may get past the cat that is blocking it
-				if float(e["y"]) > cy - bt.BLOCK_OFFSET + 1.0 and float(e["y"]) < cy + 20.0 and float(e["y"]) > cy - 5.0:
-					blocked_ok = false
-	check("Macho leaves his tile to meet mice", saw_charge and min_y < home_y - 20.0)
-	check("Macho stays inside the leash", min_y >= home_y - bt.CHARGE_LEASH - 0.01)
-	check("a mouse never gets past the charging cat", blocked_ok)
-	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "y": home_y - 100.0, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false}
+			if int(e["held_by"]) >= 0:
+				held_seen = true
+				if prev_y.has(e["x"]) and float(e["y"]) > float(prev_y[e["x"]]) + 0.01:
+					held_still = false
+			prev_y[e["x"]] = float(e["y"])
+	check("Macho leaves his tile to meet mice", max_dist > 60.0)
+	check("there is no leash: he runs well past the old 130px limit", max_dist > 160.0)
+	check("he goes to mice in other lanes, not just his own", max_side > 60.0)
+	check("a mouse he has hold of stops advancing", held_seen and held_still)
+	check("Macho alone clears wave 1 by fighting mice up the field", bt.house_hp > 0.0 and bt.wave == 2)
+	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "x": home.x + 50.0, "y": home.y - 150.0, "target": null, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false}
 	bt.enemies = []
 	bt.spawn_queue = ["mouse"]
 	bt.spawn_timer = 1000.0
 	bt.active = true
-	for k in 12:
+	for k in 60:
 		bt.step(1.0 / 12.0)
-	check("with the lane clear he runs back to his tile", absf(float(bt.cats[8]["y"]) - home_y) < 0.01 and not bt.is_charging(8))
+	check("with the field clear he runs back to his tile", bt.cat_pos(8).distance_to(home) < 0.5 and not bt.is_charging(8))
 	bt.active = false
 	check("the tile bonuses only apply on the tile", bt._cat_damage_mult(8) == bt._tile_damage_mult(8))
 	bt.queue_free()

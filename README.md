@@ -19,9 +19,9 @@ A Godot 4 project (4.3 or newer). The app opens on the hub: a game picker with a
 - Your cats sit on a 4x4 grid. Tap a cat chip at the top, then a tile, to place it. Tap a placed cat to pick it up. Cats are bought on the map.
 - Mice walk down the lanes and chew through the front-most cat in their column. Cats fight back on their own. Cats that fall come back at full health after the wave.
 - Tiles: raised tiles give ranged cats +range but make any cat take 50% more damage; holes halve damage taken but cut ranged cats' range.
-- Macho (melee) runs out of his tile up his own lane to meet mice (not too far: there is a leash), blocks them, and comes back when the lane is clear, so he belongs at the front. Rosette (ranged) hits the closest mouse in range, so keep her behind, ideally on a raised tile.
+- Macho (melee) runs out of his tile after the most advanced mouse anywhere, in any lane, holds it and fights it, then comes home when the field is clear. Rosette (ranged) hits the closest mouse in range, so keep her behind, ideally on a raised tile.
 - 10 waves, with the Rat King on wave 10. Clearing a wave gives coins (15 x wave number) and 4 bonus balls on your next drop round. If the house falls you restart at wave 1 but keep your cats and upgrades. Finishing wave 10 gives 200 coins and starts a new run.
-- Rough balance (from simulated runs): 1 cat falls around wave 3, 2 cats around wave 5, 4 cats around wave 7 or 8, and about 6 well-placed cats beat the boss.
+- Rough balance (from simulated runs): 1 cat falls around wave 4, 2 cats around wave 5, 4 cats around wave 8, and about 6 well-placed cats beat the boss.
 
 ## The map and upgrades
 - The map shows the 10 waves of the chapter as a path, with a line of story for the current wave. Under it is the upgrade panel. Coins buy:

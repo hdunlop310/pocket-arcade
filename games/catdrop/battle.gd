@@ -22,7 +22,6 @@ const STEP := Vector2(86.0, 72.0)
 const GRID_BOTTOM := 710.0
 const SPAWN_Y := 168.0
 const STOP_GAP := 16.0
-const BLOCK_OFFSET := 48.0          # a mouse stops this far above the centre of the cat blocking its lane
 
 # Tile type per grid index (row * 4 + column).
 const TILE_TYPES := [
@@ -48,11 +47,10 @@ const CAT_TYPES := {
 	"macho": {"name": "MACHO", "role": "MELEE", "kind": "melee", "hp": 150.0, "dmg": 14.0, "interval": 0.7, "reach": 86.0, "cost": 40.0},
 	"rosette": {"name": "ROSETTE", "role": "RANGED", "kind": "ranged", "hp": 50.0, "dmg": 34.0, "interval": 1.5, "range": 300.0, "cost": 60.0},
 }
-# Melee cats leave their tile to meet mice in their own lane, then come home when it is clear.
+# Melee cats leave their tile, run to the most advanced mouse anywhere on the field, hold it and fight it.
 const CHARGE_SPEED := 150.0         # px/s, out and back
-const CHARGE_LEASH := 130.0         # furthest a melee cat will run from its tile
-const CHARGE_GAP := 52.0            # it stops this far below the mouse it is fighting
-const CHARGE_REACH := 80.0          # a mouse this far beyond the leash is still worth running to
+const CHARGE_GAP := 36.0            # it stops this far from the mouse it is fighting
+const MELEE_CONTACT := 52.0         # a melee cat hits any mouse within this distance
 const COST_GROWTH := 1.35
 const MAX_CAT_LEVEL := 5
 const LEVEL_STAT_STEP := 0.2        # each cat level adds this much to health and damage (level 1 = x1.0)
@@ -283,7 +281,7 @@ func start_wave() -> bool:
 		else:
 			var key: String = grid[i]
 			var hp: float = float(CAT_TYPES[key]["hp"]) * level_mult(key)
-			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "y": tile_center(i).y, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false})
+			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "x": tile_center(i).x, "y": tile_center(i).y, "target": null, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false})
 	enemies.clear()
 	tracers.clear()
 	floaters.clear()
@@ -342,27 +340,23 @@ func cat_range(i: int) -> float:
 
 
 func _front_cat(col: int) -> int:
-	# Index of the living cat furthest up a column (so a charging cat blocks before the ones behind it), or -1.
-	var best := -1
-	var best_y := INF
+	# Index of the top-most living cat in a column that is standing on its tile, or -1.
 	for r in ROWS:
 		var i := r * COLS + col
-		if cats[i] != null and cats[i]["alive"] and float(cats[i]["y"]) < best_y:
-			best = i
-			best_y = float(cats[i]["y"])
-	return best
+		if cats[i] != null and cats[i]["alive"] and not is_charging(i):
+			return i
+	return -1
 
 
 func cat_pos(i: int) -> Vector2:
-	# Where a cat is right now: its tile, or further up its lane while charging.
-	var home := tile_center(i)
+	# Where a cat is right now: its tile, or wherever it has run to.
 	if cats.size() == COLS * ROWS and cats[i] != null:
-		return Vector2(home.x, float(cats[i]["y"]))
-	return home
+		return Vector2(float(cats[i]["x"]), float(cats[i]["y"]))
+	return tile_center(i)
 
 
 func is_charging(i: int) -> bool:
-	return active and cats.size() == COLS * ROWS and cats[i] != null and cats[i]["alive"] and tile_center(i).y - float(cats[i]["y"]) > 6.0
+	return active and cats.size() == COLS * ROWS and cats[i] != null and cats[i]["alive"] and cat_pos(i).distance_to(tile_center(i)) > 6.0
 
 
 func _cat_damage_mult(i: int) -> float:
@@ -370,42 +364,64 @@ func _cat_damage_mult(i: int) -> float:
 	return 1.0 if is_charging(i) else _tile_damage_mult(i)
 
 
-func _charge_target(i: int) -> Dictionary:
-	# The mouse furthest down this cat's lane that is worth running out to, or {}.
-	var home := tile_center(i)
+func _pick_charge_target(i: int) -> Dictionary:
+	# Keep fighting the current mouse; otherwise go for the most advanced one anywhere (closest to the house).
+	var cur = cats[i]["target"]
+	if cur is Dictionary and not cur["dead"]:
+		return cur
 	var best: Dictionary = {}
 	var best_y := -1.0
 	for e in enemies:
-		if e["dead"] or absf(float(e["x"]) - home.x) >= 48.0:
-			continue
-		var ey := float(e["y"])
-		if ey > home.y + 10.0 or ey < home.y - CHARGE_LEASH - CHARGE_REACH:
-			continue
-		if ey > best_y:
+		if not e["dead"] and float(e["y"]) > best_y:
 			best = e
-			best_y = ey
+			best_y = float(e["y"])
+	cats[i]["target"] = best if not best.is_empty() else null
 	return best
+
+
+func _move_melee(i: int, dt: float) -> void:
+	var cat: Dictionary = cats[i]
+	var pos := cat_pos(i)
+	var goal := tile_center(i)
+	var target := _pick_charge_target(i)
+	if not target.is_empty():
+		var tp := Vector2(float(target["x"]), float(target["y"]))
+		var gap := pos.distance_to(tp)
+		goal = pos if gap <= CHARGE_GAP else tp + (pos - tp).normalized() * CHARGE_GAP
+		if gap <= MELEE_CONTACT and int(target["held_by"]) < 0:
+			target["held_by"] = i
+	var np := pos.move_toward(goal, CHARGE_SPEED * dt)
+	np.x = clampf(np.x, FIELD.position.x + 22.0, FIELD.end.x - 22.0)
+	np.y = clampf(np.y, SPAWN_Y, GRID_BOTTOM)
+	cat["x"] = np.x
+	cat["y"] = np.y
+	var moving: bool = np.distance_to(pos) > 0.01
+	cat["moving"] = moving
+	if moving:
+		cat["phase"] = float(cat["phase"]) + dt * 22.0
+		cat["dust"] = float(cat["dust"]) - dt
+		if float(cat["dust"]) <= 0.0:
+			cat["dust"] = 0.09
+			fx.burst(np + Vector2(0.0, 22.0), Color(0.78, 0.72, 0.66), 2, 45.0, 0.35, 3.0, -30.0)
 
 
 func _find_target(i: int) -> Dictionary:
 	var cat: Dictionary = cats[i]
 	var center := cat_pos(i)
 	var best: Dictionary = {}
-	var best_y := -1.0
 	var kind: String = CAT_TYPES[cat["key"]]["kind"]
 	var reach := cat_range(i)
+	var best_d := INF
 	for e in enemies:
 		if e["dead"]:
 			continue
-		var ok := false
+		var d := Vector2(float(e["x"]), float(e["y"])).distance_to(center)
 		if kind == "melee":
-			var dy: float = center.y - float(e["y"])
-			ok = absf(float(e["x"]) - center.x) < 48.0 and dy >= -20.0 and dy <= reach
-		else:
-			ok = Vector2(float(e["x"]), float(e["y"])).distance_to(center) <= reach
-		if ok and float(e["y"]) > best_y:
+			if d <= MELEE_CONTACT and d < best_d:
+				best = e
+				best_d = d
+		elif d <= reach and float(e["y"]) > float(best.get("y", -1.0)):
 			best = e
-			best_y = float(e["y"])
 	return best
 
 
@@ -419,7 +435,14 @@ func step(dt: float) -> void:
 		_spawn(spawn_queue.pop_front())
 		spawn_timer = SPAWN_INTERVAL
 
-	# Movement, blocking and attacks on cats
+	# Melee cats run to the most advanced mouse anywhere and hold it
+	for e in enemies:
+		e["held_by"] = -1
+	for i in COLS * ROWS:
+		if cats[i] != null and cats[i]["alive"] and CAT_TYPES[cats[i]["key"]]["kind"] == "melee":
+			_move_melee(i, dt)
+
+	# Mice walk down their lane, queue behind each other, and chew whatever blocks them
 	var by_col := {}
 	for e in enemies:
 		if not by_col.has(e["col"]):
@@ -431,43 +454,30 @@ func step(dt: float) -> void:
 		var front := _front_cat(int(col))
 		var limit := GRID_BOTTOM + 6.0
 		if front >= 0:
-			limit = float(cats[front]["y"]) - BLOCK_OFFSET
+			limit = tile_rect(front).position.y - STOP_GAP
 		for idx in list.size():
 			var e: Dictionary = list[idx]
+			var held: int = int(e["held_by"])
 			var lim := limit if idx == 0 else float(list[idx - 1]["y"]) - 20.0
+			if held >= 0:
+				lim = minf(lim, float(e["y"]))   # a mouse a cat has hold of stops where it is
 			e["y"] = minf(float(e["y"]) + float(e["speed"]) * dt, lim)
-			if idx == 0 and float(e["y"]) >= limit - 0.5:
-				if front >= 0:
-					cats[front]["hp"] = float(cats[front]["hp"]) - float(e["dps"]) * dt * _cat_damage_mult(front)
-					if float(cats[front]["hp"]) <= 0.0:
-						cats[front]["alive"] = false
-						fx.burst(cat_pos(front), COL_AMBER, 12, 150.0, 0.6, 3.5, 250.0)
-						shake.emit(2.0)
-				else:
-					house_hp -= float(e["house"])
-					fx.burst(Vector2(float(e["x"]), GRID_BOTTOM + 8.0), COL_PEG, 10, 160.0, 0.5, 3.5, 200.0)
-					shake.emit(4.0 if e["kind"] == "boss" else 2.5)
-					e["dead"] = true
-
-	# Melee cats run out to meet mice in their lane and come home when it is clear
-	for i in COLS * ROWS:
-		if cats[i] == null or not cats[i]["alive"] or CAT_TYPES[cats[i]["key"]]["kind"] != "melee":
-			continue
-		var home_y := tile_center(i).y
-		var want := home_y
-		var target := _charge_target(i)
-		if not target.is_empty():
-			want = clampf(float(target["y"]) + CHARGE_GAP, home_y - CHARGE_LEASH, home_y)
-		var before := float(cats[i]["y"])
-		cats[i]["y"] = move_toward(before, want, CHARGE_SPEED * dt)
-		var moving: bool = absf(float(cats[i]["y"]) - before) > 0.01
-		cats[i]["moving"] = moving
-		if moving:
-			cats[i]["phase"] = float(cats[i]["phase"]) + dt * 22.0
-			cats[i]["dust"] = float(cats[i]["dust"]) - dt
-			if float(cats[i]["dust"]) <= 0.0:
-				cats[i]["dust"] = 0.09
-				fx.burst(Vector2(tile_center(i).x, float(cats[i]["y"]) + 22.0), Color(0.78, 0.72, 0.66), 2, 45.0, 0.35, 3.0, -30.0)
+			var victim := -1
+			if held >= 0 and cats[held]["alive"]:
+				victim = held
+			elif idx == 0 and float(e["y"]) >= limit - 0.5 and front >= 0:
+				victim = front
+			if victim >= 0:
+				cats[victim]["hp"] = float(cats[victim]["hp"]) - float(e["dps"]) * dt * _cat_damage_mult(victim)
+				if float(cats[victim]["hp"]) <= 0.0:
+					cats[victim]["alive"] = false
+					fx.burst(cat_pos(victim), COL_AMBER, 12, 150.0, 0.6, 3.5, 250.0)
+					shake.emit(2.0)
+			elif held < 0 and idx == 0 and float(e["y"]) >= limit - 0.5 and front < 0:
+				house_hp -= float(e["house"])
+				fx.burst(Vector2(float(e["x"]), GRID_BOTTOM + 8.0), COL_PEG, 10, 160.0, 0.5, 3.5, 200.0)
+				shake.emit(4.0 if e["kind"] == "boss" else 2.5)
+				e["dead"] = true
 
 	# Cats attack
 	for i in COLS * ROWS:
