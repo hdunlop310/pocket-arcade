@@ -41,9 +41,19 @@ func _ready() -> void:
 	check("map button reads PLAY WAVE 1 and HUB is shown", m.main_btn.text == "PLAY WAVE 1" and m.home_btn.visible)
 
 	# Buying cats
-	check("cannot buy a cat with 0 coins", m.buy_cat("rosette") == false)
+	check("cannot buy a cat with 0 coins", m.buy_cat("macho") == false)
+	check("Rosette starts locked behind wave 2", not m.cat_unlocked("rosette") and m.map_rows["cat:rosette"]["buy"].text == "LOCKED")
+	check("the team starts at 1 of 2 cats", m.team_size() == 1 and m.team_cap() == 2)
 	m.coins = 500
+	check("a locked cat cannot be bought", m.buy_cat("rosette") == false and m.coins == 500)
+	m.stats["best_wave"] = 2
+	m._refresh_panel()
+	check("clearing wave 2 unlocks Rosette and grows the team cap", m.cat_unlocked("rosette") and m.team_cap() == 4)
 	check("buy Rosette for 60", m.buy_cat("rosette") and m.coins == 440 and b.owned["rosette"] == 1)
+	m.stats["best_wave"] = 0
+	m._refresh_panel()
+	check("a full team cannot grow", m.buy_cat("macho") == false and m.map_rows["cat:macho"]["buy"].text == "TEAM FULL")
+	m.stats["best_wave"] = 3
 	check("second Rosette costs 81", b.cat_cost("rosette") == 81)
 	check("second Macho costs 54", b.cat_cost("macho") == 54)
 
@@ -92,10 +102,10 @@ func _ready() -> void:
 
 	# Drop phase: exactly one drop per round
 	m._drop_ball()
-	check("the drop does nothing from the map", m.dropped == false and m.balls_left == 12)
+	check("the drop does nothing from the map", m.dropped == false and m.balls_left == 5)
 	m._on_main_pressed()
 	await frames(2)
-	check("PLAY moves to the drop board with a full set of balls", m.state == "drop" and m.balls_left == 12 and not m.map_panel.visible and not m.home_btn.visible)
+	check("PLAY moves to the drop board with a full set of balls", m.state == "drop" and m.balls_left == 5 and not m.map_panel.visible and not m.home_btn.visible)
 	check("button reads DROP ALL BALLS", m.main_btn.text == "DROP ALL BALLS" and not m.main_btn.disabled)
 	var coins_before_drop: int = m.coins
 	m._on_main_pressed()
@@ -138,7 +148,7 @@ func _ready() -> void:
 
 	# Bonus balls join the next round's drop, and are only spent when dropped
 	m._on_main_pressed()
-	check("next round has 12 + 4 bonus balls", m.state == "drop" and m.balls_left == 16 and m.bonus_balls == 4)
+	check("next round has 5 + 4 bonus balls", m.state == "drop" and m.balls_left == 9 and m.bonus_balls == 4)
 	m._go_map()
 	check("leaving without dropping keeps the bonus", m.bonus_balls == 4 and m.state == "map")
 
@@ -220,7 +230,7 @@ func _ready() -> void:
 	check("Macho leaves his tile to meet mice", saw_charge and min_y < home_y - 20.0)
 	check("Macho stays inside the leash", min_y >= home_y - bt.CHARGE_LEASH - 0.01)
 	check("a mouse never gets past the charging cat", blocked_ok)
-	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "y": home_y - 100.0}
+	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "y": home_y - 100.0, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false}
 	bt.enemies = []
 	bt.spawn_queue = ["mouse"]
 	bt.spawn_timer = 1000.0

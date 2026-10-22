@@ -102,6 +102,7 @@ var banner_t := 0.0
 var rng := RandomNumberGenerator.new()
 var textures := {}
 var fx := Fx.new()
+var slashes: Array = []   # {pos, t}: melee slash arcs
 
 
 func _ready() -> void:
@@ -282,7 +283,7 @@ func start_wave() -> bool:
 		else:
 			var key: String = grid[i]
 			var hp: float = float(CAT_TYPES[key]["hp"]) * level_mult(key)
-			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "y": tile_center(i).y})
+			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "y": tile_center(i).y, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false})
 	enemies.clear()
 	tracers.clear()
 	floaters.clear()
@@ -457,7 +458,16 @@ func step(dt: float) -> void:
 		var target := _charge_target(i)
 		if not target.is_empty():
 			want = clampf(float(target["y"]) + CHARGE_GAP, home_y - CHARGE_LEASH, home_y)
-		cats[i]["y"] = move_toward(float(cats[i]["y"]), want, CHARGE_SPEED * dt)
+		var before := float(cats[i]["y"])
+		cats[i]["y"] = move_toward(before, want, CHARGE_SPEED * dt)
+		var moving: bool = absf(float(cats[i]["y"]) - before) > 0.01
+		cats[i]["moving"] = moving
+		if moving:
+			cats[i]["phase"] = float(cats[i]["phase"]) + dt * 22.0
+			cats[i]["dust"] = float(cats[i]["dust"]) - dt
+			if float(cats[i]["dust"]) <= 0.0:
+				cats[i]["dust"] = 0.09
+				fx.burst(Vector2(tile_center(i).x, float(cats[i]["y"]) + 22.0), Color(0.78, 0.72, 0.66), 2, 45.0, 0.35, 3.0, -30.0)
 
 	# Cats attack
 	for i in COLS * ROWS:
@@ -465,6 +475,7 @@ func step(dt: float) -> void:
 			continue
 		var cat: Dictionary = cats[i]
 		cat["cd"] = maxf(float(cat["cd"]) - dt, 0.0)
+		cat["atk_t"] = float(cat["atk_t"]) + dt
 		if float(cat["cd"]) > 0.0:
 			continue
 		var target := _find_target(i)
@@ -474,6 +485,9 @@ func step(dt: float) -> void:
 		var dmg: float = float(def["dmg"]) * level_mult(cat["key"])
 		target["hp"] = float(target["hp"]) - dmg
 		cat["cd"] = float(def["interval"])
+		cat["atk_t"] = 0.0
+		if def["kind"] == "melee":
+			slashes.append({"pos": Vector2(float(target["x"]), float(target["y"])), "t": 0.2})
 		var from := cat_pos(i)
 		tracers.append({"from": from, "to": Vector2(float(target["x"]), float(target["y"])), "t": 0.12, "melee": def["kind"] == "melee"})
 		floaters.append({"pos": Vector2(float(target["x"]), float(target["y"]) - 14.0), "text": str(int(dmg)), "t": 0.6})
@@ -541,6 +555,9 @@ func _process(delta: float) -> void:
 	if banner_t > 0.0:
 		banner_t -= delta
 	fx.update(delta)
+	for sl in slashes:
+		sl["t"] = float(sl["t"]) - delta
+	slashes = slashes.filter(func(sl): return float(sl["t"]) > 0.0)
 	for t in tracers:
 		t["t"] = float(t["t"]) - delta
 	tracers = tracers.filter(func(t): return float(t["t"]) > 0.0)
@@ -607,6 +624,36 @@ func _draw_cat_card(key: String, rect: Rect2, dead: bool) -> void:
 		draw_rect(rect, Color(0.0, 0.0, 0.0, 0.6))
 
 
+func _draw_cat_anim(i: int, center: Vector2, dead: bool) -> void:
+	# A cat card with simple procedural animation: bob and lean while running, lunge and pop on attack.
+	var key: String = grid[i]
+	var cat = cats[i] if active and cats.size() == COLS * ROWS else null
+	var off := Vector2.ZERO
+	var rot := 0.0
+	var sc := Vector2.ONE
+	if cat != null and not dead:
+		var atk: float = float(cat["atk_t"])
+		if atk < 0.22:
+			var k := 1.0 - atk / 0.22
+			sc = Vector2.ONE * (1.0 + 0.22 * k)
+			if CAT_TYPES[key]["kind"] == "melee":
+				off = Vector2(0.0, -14.0 * k * k)
+				rot = 0.18 * k
+			else:
+				off = Vector2(0.0, 4.0 * k)
+		if cat["moving"]:
+			var ph: float = float(cat["phase"])
+			off += Vector2(0.0, -absf(sin(ph)) * 5.0)
+			rot += sin(ph) * 0.10
+			sc *= Vector2(1.0 + 0.05 * sin(ph * 2.0), 1.0 - 0.05 * sin(ph * 2.0))
+			for k2 in 3:
+				var lx := center.x - 12.0 + float(k2) * 12.0
+				draw_line(Vector2(lx, center.y + 26.0), Vector2(lx, center.y + 38.0 + 4.0 * float(k2 % 2)), Color(1.0, 1.0, 1.0, 0.22), 2.0)
+	draw_set_transform(center + off, rot, sc)
+	_draw_cat_card(key, Rect2(-20.0, -20.0, 40.0, 40.0), dead)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
 	UIKit.panel(self, FIELD.grow(5.0), UIKit.INK, UIKit.INK, 5, 14)
@@ -647,7 +694,7 @@ func _draw() -> void:
 				_draw_portrait(key, peek, true)
 				draw_rect(Rect2(peek.position.x, peek.position.y, peek.size.x, peek.size.y * 0.5), Color(0.0, 0.0, 0.0, 0.18))
 			else:
-				_draw_cat_card(key, pr, dead)
+				_draw_cat_anim(i, pr.get_center(), dead)
 			if cat != null and not dead:
 				var frac := clampf(float(cat["hp"]) / float(cat["max"]), 0.0, 1.0)
 				_draw_hp_bar(Rect2(r.position.x + 8.0, r.end.y - (15.0 if kind == "raised" else 9.0), r.size.x - 16.0, 5.0), frac)
@@ -659,7 +706,7 @@ func _draw() -> void:
 			var ckey: String = grid[i]
 			var cr := Rect2(cp.x - 20.0, cp.y - 20.0, 40.0, 40.0)
 			draw_circle(cp + Vector2(0.0, 24.0), 16.0, Color(0.0, 0.0, 0.0, 0.3))
-			_draw_cat_card(ckey, cr, false)
+			_draw_cat_anim(i, cp, false)
 			var cfrac := clampf(float(cats[i]["hp"]) / float(cats[i]["max"]), 0.0, 1.0)
 			_draw_hp_bar(Rect2(cp.x - 20.0, cp.y + 26.0, 40.0, 5.0), cfrac)
 
@@ -672,6 +719,10 @@ func _draw() -> void:
 		var a := float(t["t"]) / 0.12
 		draw_line(Vector2(t["from"]), Vector2(t["to"]), Color(UIKit.INK, a), 7.0 if t["melee"] else 5.0)
 		draw_line(Vector2(t["from"]), Vector2(t["to"]), Color(COL_AMBER, a), 4.0 if t["melee"] else 2.5)
+	for sl in slashes:
+		var sk := float(sl["t"]) / 0.2
+		draw_arc(Vector2(sl["pos"]), 24.0, -2.6, -0.5, 12, Color(UIKit.INK, sk), 10.0)
+		draw_arc(Vector2(sl["pos"]), 24.0, -2.6, -0.5, 12, Color(UIKit.CREAM, sk), 5.0)
 	fx.draw(self)
 	for f in floaters:
 		var fa := clampf(float(f["t"]) / 0.6, 0.0, 1.0)

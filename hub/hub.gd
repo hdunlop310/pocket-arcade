@@ -34,6 +34,7 @@ var _tile_art := {}          # game id -> Texture2D
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE   # a full-screen STOP control here would swallow every tap meant for the game
 	_build_home()
 	game_host = Node.new()
 	game_host.name = "GameHost"

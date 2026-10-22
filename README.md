@@ -12,7 +12,7 @@ A Godot 4 project (4.3 or newer). The app opens on the hub: a game picker with a
 - On the drop board a black cat sweeps left and right across the top. Press DROP ALL BALLS to release all the balls in a quick burst from where the cat is at that moment, so your timing is your aim. You get one drop per round.
 - Balls bounce through the pegs. Each gate multiplies a ball (X2, X3, X5) by spawning extra balls.
 - Every ball that lands in the cup banks 1 coin.
-- You get 12 balls per round (plus bonus balls from cleared waves). When they have all landed, the button becomes TO BATTLE. There is no way to drop again without fighting a wave.
+- You get 5 balls per round (plus bonus balls from cleared waves; More Balls adds one per level). When they have all landed, the button becomes TO BATTLE. There is no way to drop again without fighting a wave.
 
 ## The battle
 - After the drop, TO BATTLE opens the battle grid. When the wave ends, the game returns to the map by itself.
@@ -25,11 +25,11 @@ A Godot 4 project (4.3 or newer). The app opens on the hub: a game picker with a
 
 ## The map and upgrades
 - The map shows the 10 waves of the chapter as a path, with a line of story for the current wave. Under it is the upgrade panel. Coins buy:
-  - CATS: Macho (40 coins) and Rosette (60 coins). Each extra copy of the same cat costs 35% more, up to 10 of each.
+  - CATS: Macho (40 coins) and Rosette (60 coins, unlocks after you clear wave 2). Your team can hold 2 cats plus one more for every wave you clear. Each extra copy of the same cat costs 35% more, up to 10 of each.
   - CAT LEVELS: LEVEL UP makes every copy of that cat 20% tougher and stronger, up to level 5 (Macho costs 80, 136, 231, 393).
-  - MORE BALLS: +2 balls per round, up to 6 levels (costs 50, 80, 128, ...).
+  - MORE BALLS: +1 ball per round, up to 5 levels (costs 60, 102, 173, ...).
   - COIN VALUE: +1 coin per ball, up to 5 levels (costs 80, 144, 259, ...).
-  - BIGGER GATES: every gate gets +1 multiplier, up to 2 levels (costs 200, 500).
+  - BIGGER GATES: every gate gets +1 multiplier, 1 level (costs 400).
 - Progress (coins and upgrade levels) saves automatically. To reset it while testing, in the Godot editor use Project > Open User Data Folder and delete `hub.cfg`, or use Settings > Reset all progress in the hub. Saves from the old prototype (`catdrop.cfg`) are migrated into `hub.cfg` the first time the new version runs.
 
 ## Tuning (top of `games/catdrop/catdrop.gd`)

@@ -52,6 +52,29 @@ func _ready() -> void:
 	await snap("7_battle_mid")
 	await frames(120)
 	await snap("8_battle_later")
+
+	# Macho running out and attacking, on a standalone battle so the moment is easy to catch
+	var bt = load("res://games/catdrop/battle.gd").new()
+	add_child(bt)
+	bt.owned = {"macho": 1, "rosette": 0}
+	for i in 16:
+		bt.grid[i] = ""
+	bt.grid[8] = "macho"
+	bt.wave = 3
+	bt.start_wave()
+	var guard2 := 0
+	while guard2 < 3000 and not (bt.is_charging(8) and bt.cats[8]["moving"] and bt.cats[8]["y"] < bt.tile_center(8).y - 60.0):
+		bt.step(1.0 / 30.0)
+		guard2 += 1
+	await frames(2)
+	await snap("8b_macho_running")
+	guard2 = 0
+	while guard2 < 3000 and bt.slashes.is_empty():
+		bt.step(1.0 / 30.0)
+		guard2 += 1
+	await frames(1)
+	await snap("8c_macho_attacking")
+	bt.queue_free()
 	m.queue_free()
 	await frames(2)
 

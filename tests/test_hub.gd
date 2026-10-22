@@ -102,6 +102,32 @@ func _ready() -> void:
 	check("clearing a wave reports XP and the first-wave achievement", Profile.xp(Save.section("profile")) == xp_before + 10 + 20 and Profile.unlocked(Save.section("profile")).has("cd_first_wave"))
 	hub.close_game()
 
+	# Taps must reach the game through the hub's UI: a full-screen STOP control once swallowed them
+	Save.section("catdrop")["stats"] = {"balls_banked": 0, "best_wave": 3, "runs_won": 0}
+	Save.section("catdrop")["owned"] = {"macho": 1, "rosette": 1}
+	hub.open_game("catdrop")
+	await frames(2)
+	var gm = hub.game
+	gm._on_main_pressed()
+	gm.round_over = true
+	gm.dropped = true
+	gm._on_main_pressed()
+	await frames(2)
+	check("in the hub, the game reaches the battle screen", gm.state == "battle" and gm.battle.visible)
+	for i in 16:
+		gm.battle.grid[i] = ""
+	gm.battle.selected = ""
+	var tap := InputEventMouseButton.new()
+	tap.button_index = MOUSE_BUTTON_LEFT
+	tap.pressed = true
+	tap.position = gm.battle._chip_rect(1).get_center()
+	hub.get_viewport().push_input(tap, true)   # true: the position is already in game coordinates
+	check("a real tap on a cat chip selects it (hub does not swallow input)", gm.battle.selected == "rosette")
+	tap.position = gm.battle.tile_center(5)
+	hub.get_viewport().push_input(tap, true)   # true: the position is already in game coordinates
+	check("a real tap on a tile places the cat", gm.battle.grid[5] == "rosette")
+	hub.close_game()
+
 	# finished() with a stub game returns to the picker and awards
 	var stub: GameBase = load("res://tests/stub_game.gd").new()
 	hub.run_game(stub, "stub")

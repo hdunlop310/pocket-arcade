@@ -10,8 +10,8 @@ const BallScript := preload("res://games/catdrop/ball.gd")
 const BattleScript := preload("res://games/catdrop/battle.gd")
 
 # --- Tuning knobs -----------------------------------------------------------
-const BASE_BALLS := 12            # balls per round before any upgrades
-const BALLS_STEP := 2             # extra balls per "more balls" level
+const BASE_BALLS := 5             # balls per round before any upgrades
+const BALLS_STEP := 1             # extra balls per "more balls" level
 const BASE_COINS_PER_BALL := 1    # coins per ball before any upgrades
 const MAX_BALLS_ALIVE := 250      # safety cap so big multipliers can't tank the framerate
 const DROP_STAGGER := 0.06        # seconds between balls in the burst
@@ -31,10 +31,14 @@ const RUN_COMPLETE_COINS := 200
 # Board upgrades. Cost of the next level = round(base * growth ^ current_level).
 const UPGRADE_ORDER := ["balls", "coin", "gates"]
 const UPGRADES := {
-	"balls": {"name": "MORE BALLS", "base": 50.0, "growth": 1.6, "max": 6},
+	"balls": {"name": "MORE BALLS", "base": 60.0, "growth": 1.7, "max": 5},
 	"coin": {"name": "COIN VALUE", "base": 80.0, "growth": 1.8, "max": 5},
-	"gates": {"name": "BIGGER GATES", "base": 200.0, "growth": 2.5, "max": 2},
+	"gates": {"name": "BIGGER GATES", "base": 400.0, "growth": 2.5, "max": 1},
 }
+
+# Progression: cats unlock as you clear waves, and the team can only grow as you push further.
+const CAT_UNLOCK_WAVE := {"macho": 0, "rosette": 2}   # waves you must have cleared before the cat can be bought
+const TEAM_BASE := 2                                   # cats you may own at the start; +1 for every wave cleared
 
 const CHAPTER_TITLE := "CHAPTER 1: THE MOUSE INVASION"
 const STORY := [
@@ -64,9 +68,9 @@ const PATH_BOTTOM := 362.0
 # Each gate multiplies any ball that falls through it.
 const GATES := [
 	{"rect": Rect2(30.0, 330.0, 100.0, 28.0), "mult": 2},
-	{"rect": Rect2(260.0, 330.0, 100.0, 28.0), "mult": 3},
-	{"rect": Rect2(145.0, 440.0, 100.0, 28.0), "mult": 5},
-	{"rect": Rect2(30.0, 540.0, 100.0, 28.0), "mult": 3},
+	{"rect": Rect2(260.0, 330.0, 100.0, 28.0), "mult": 2},
+	{"rect": Rect2(145.0, 440.0, 100.0, 28.0), "mult": 3},
+	{"rect": Rect2(30.0, 540.0, 100.0, 28.0), "mult": 2},
 	{"rect": Rect2(260.0, 540.0, 100.0, 28.0), "mult": 2},
 ]
 
@@ -101,6 +105,7 @@ var home_btn: Button
 var map_panel: Panel
 var map_rows := {}  # "cat:macho" / "up:balls" -> {"desc", "pips", "buy", "lvl", "badge"}
 var fx := Fx.new()
+var team_label: Label
 var shown_coins := 0.0      # the coin counter counts up towards `coins`
 var shake := 0.0
 var shaking := false
@@ -185,8 +190,23 @@ func buy(key: String) -> bool:
 	return true
 
 
+func cat_unlocked(key: String) -> bool:
+	return int(stats["best_wave"]) >= int(CAT_UNLOCK_WAVE.get(key, 0))
+
+
+func team_size() -> int:
+	var n := 0
+	for k in battle.CAT_ORDER:
+		n += int(battle.owned[k])
+	return n
+
+
+func team_cap() -> int:
+	return TEAM_BASE + int(stats["best_wave"])
+
+
 func buy_cat(key: String) -> bool:
-	if not battle.can_add_cat(key):
+	if not cat_unlocked(key) or team_size() >= team_cap() or not battle.can_add_cat(key):
 		return false
 	var cost: int = battle.cat_cost(key)
 	if coins < cost:
@@ -200,7 +220,7 @@ func buy_cat(key: String) -> bool:
 
 
 func upgrade_cat(key: String) -> bool:
-	if not battle.can_level(key):
+	if not cat_unlocked(key) or not battle.can_level(key):
 		return false
 	var cost: int = battle.level_cost(key)
 	if coins < cost:
@@ -509,9 +529,9 @@ func _build_map_panel() -> void:
 	map_panel.add_theme_stylebox_override("panel", UIKit.box(Color("#17171E"), UIKit.AMBER, 4, 18, 3))
 	add_child(map_panel)
 
-	var cats_heading := _make_label("YOUR CATS", 12, UIKit.AMBER, true)
-	cats_heading.position = Vector2(16.0, 0.0)
-	map_panel.add_child(cats_heading)
+	team_label = _make_label("YOUR CATS", 12, UIKit.AMBER, true)
+	team_label.position = Vector2(16.0, 0.0)
+	map_panel.add_child(team_label)
 	for i in battle.CAT_ORDER.size():
 		var key: String = battle.CAT_ORDER[i]
 		var def: Dictionary = battle.CAT_TYPES[key]
@@ -546,6 +566,7 @@ func _desc_for(key: String) -> String:
 func _refresh_panel() -> void:
 	if map_panel == null:
 		return
+	team_label.text = "YOUR CATS   team %d/%d  (clear waves to grow it)" % [team_size(), team_cap()]
 
 	for key in battle.CAT_ORDER:
 		var row: Dictionary = map_rows["cat:" + key]
@@ -569,6 +590,15 @@ func _refresh_panel() -> void:
 			var lcost: int = battle.level_cost(key)
 			lvl_btn.text = "LEVEL UP %d" % lcost
 			lvl_btn.disabled = coins < lcost
+		if not cat_unlocked(key):
+			desc.text = "Clear wave %d to unlock" % int(CAT_UNLOCK_WAVE[key])
+			buy_btn.text = "LOCKED"
+			buy_btn.disabled = true
+			lvl_btn.text = "LOCKED"
+			lvl_btn.disabled = true
+		elif buy_btn.text != "MAX CATS" and team_size() >= team_cap():
+			buy_btn.text = "TEAM FULL"
+			buy_btn.disabled = true
 
 	for key in UPGRADE_ORDER:
 		var row: Dictionary = map_rows["up:" + key]
