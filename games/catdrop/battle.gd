@@ -47,6 +47,10 @@ const CAT_TYPES := {
 	"rosette": {"name": "ROSETTE", "role": "RANGED", "kind": "ranged", "hp": 50.0, "dmg": 34.0, "interval": 1.5, "range": 300.0, "cost": 60.0},
 }
 const COST_GROWTH := 1.35
+const MAX_CAT_LEVEL := 5
+const LEVEL_STAT_STEP := 0.2        # each cat level adds this much to health and damage (level 1 = x1.0)
+const LEVEL_COST_FACTOR := 2.0      # level-up cost = base cost * this * LEVEL_COST_GROWTH ^ (level - 1)
+const LEVEL_COST_GROWTH := 1.7
 
 const MOUSE_HP := 30.0
 const MOUSE_HP_GROWTH := 0.35
@@ -74,6 +78,7 @@ const COL_MOUSE := Color("#8C8C99")
 var wave := 1
 var house_hp := HOUSE_MAX
 var owned := {"macho": 1, "rosette": 0}
+var cat_levels := {"macho": 1, "rosette": 1}
 var grid: Array = []          # 16 entries: "" or a cat key
 var selected := ""
 var active := false
@@ -139,6 +144,23 @@ func can_add_cat(key: String) -> bool:
 	return int(owned[key]) < MAX_OWNED
 
 
+func level_mult(key: String) -> float:
+	return 1.0 + LEVEL_STAT_STEP * float(int(cat_levels[key]) - 1)
+
+
+func can_level(key: String) -> bool:
+	return int(cat_levels[key]) < MAX_CAT_LEVEL
+
+
+func level_cost(key: String) -> int:
+	return int(round(float(CAT_TYPES[key]["cost"]) * LEVEL_COST_FACTOR * pow(LEVEL_COST_GROWTH, float(int(cat_levels[key]) - 1))))
+
+
+func level_up(key: String) -> void:
+	cat_levels[key] = int(cat_levels[key]) + 1
+	changed.emit()
+
+
 func add_cat(key: String) -> void:
 	owned[key] = int(owned[key]) + 1
 	if selected == "":
@@ -172,6 +194,7 @@ func save_to(d: Dictionary) -> void:
 	d["house_hp"] = house_hp
 	d["grid"] = grid.duplicate()
 	d["owned"] = owned.duplicate()
+	d["cat_levels"] = cat_levels.duplicate()
 
 
 func load_from(d: Dictionary) -> void:
@@ -181,6 +204,9 @@ func load_from(d: Dictionary) -> void:
 	var saved_owned: Dictionary = d.get("owned", {})
 	for k in CAT_ORDER:
 		owned[k] = clampi(int(saved_owned.get(k, owned[k])), 0, MAX_OWNED)
+	var saved_levels: Dictionary = d.get("cat_levels", {})
+	for k in CAT_ORDER:
+		cat_levels[k] = clampi(int(saved_levels.get(k, 1)), 1, MAX_CAT_LEVEL)
 	var saved = d.get("grid", [])
 	if saved is Array and saved.size() == COLS * ROWS:
 		var counts := {}
@@ -247,7 +273,7 @@ func start_wave() -> bool:
 			cats.append(null)
 		else:
 			var key: String = grid[i]
-			var hp: float = float(CAT_TYPES[key]["hp"])
+			var hp: float = float(CAT_TYPES[key]["hp"]) * level_mult(key)
 			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true})
 	enemies.clear()
 	tracers.clear()
@@ -385,11 +411,12 @@ func step(dt: float) -> void:
 		if target.is_empty():
 			continue
 		var def: Dictionary = CAT_TYPES[cat["key"]]
-		target["hp"] = float(target["hp"]) - float(def["dmg"])
+		var dmg: float = float(def["dmg"]) * level_mult(cat["key"])
+		target["hp"] = float(target["hp"]) - dmg
 		cat["cd"] = float(def["interval"])
 		var from := tile_center(i)
 		tracers.append({"from": from, "to": Vector2(float(target["x"]), float(target["y"])), "t": 0.12, "melee": def["kind"] == "melee"})
-		floaters.append({"pos": Vector2(float(target["x"]), float(target["y"]) - 14.0), "text": str(int(def["dmg"])), "t": 0.6})
+		floaters.append({"pos": Vector2(float(target["x"]), float(target["y"]) - 14.0), "text": str(int(dmg)), "t": 0.6})
 		if float(target["hp"]) <= 0.0:
 			target["dead"] = true
 

@@ -53,6 +53,7 @@ Each: design note in `docs/`, logic tests, 20+ levels, own economy, screenshots,
 - [ ] Privacy statement: collects nothing, no network calls.
 
 ## Cat Drop backlog (parallel track, from CLAUDE.md)
+Done 2026-10-22: story map home with tap-to-upgrade cards, one drop per round (map -> drop -> battle -> map), cat levels. Next ideas: more cats (the upgrade panel needs scrolling past 3), per-chapter story and art, level-aware balance sweep, sprites.
 More cats and enemy types, cat upgrades or merging, aim mattering on the drop board, real sprites, rebalancing the Bigger Gates upgrade.
 
 ## Open questions for the owner

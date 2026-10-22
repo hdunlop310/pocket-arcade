@@ -3,13 +3,13 @@
 A free, ad-free mobile game in the hybrid-casual style. Built in Godot 4 (developed and tested on 4.7.2) as a portfolio project. Target platforms: iOS first (the owner has an iPhone), web build for quick phone testing, Android later.
 
 ## The game in one paragraph
-Drop balls through a peg board with multiplier gates (X2/X3/X5) into a cup, and every ball in the cup banks coins. Spend coins in the shop on cats and board upgrades. Place cats on a 4x4 battle grid, then start a wave: mice walk down four lanes and chew through the front cat in their column while the cats fight back automatically. Clearing a wave pays coins and bonus balls for the next drop round. 10 waves per run, boss (the Rat King) on wave 10. The drop board is the hands-on part you play; the battle is the payoff.
+Drop balls through a peg board with multiplier gates (X2/X3/X5) into a cup, and every ball in the cup banks coins. Spend coins on the map screen on cats, cat levels and board upgrades. Place cats on a 4x4 battle grid, then start a wave: mice walk down four lanes and chew through the front cat in their column while the cats fight back automatically. Clearing a wave pays coins and bonus balls for the next drop round. 10 waves per run, boss (the Rat King) on wave 10. The drop board is the hands-on part you play; the battle is the payoff.
 
 ## Decisions already made (do not reopen without asking the owner)
 - No ads, no energy timers, no dark patterns. This is the whole pitch.
-- Balls per round are a fixed number, upgradeable in the shop. Pressing DROP ALL BALLS releases every remaining ball at once from wherever the dropper cat is, so timing is the aim.
+- Balls per round are a fixed number, upgradeable on the map. Pressing DROP ALL BALLS releases every ball at once from wherever the dropper cat is, so timing is the aim. **One drop per round, and no way to start another round without fighting a wave** (owner decision 2026-10-22, so coins cannot be farmed). Round loop: map -> drop (once) -> battle -> map. A failed wave still needs a fresh drop to retry.
 - Cats are placed on a grid, not freely. Tile types matter: flat, raised (ranged cats +range, any cat takes +50% damage), hole (any cat takes -50% damage, ranged cats lose range). The layout is `TILE_TYPES` in `battle.gd`.
-- Coins are the single currency. Cats and board upgrades both cost coins.
+- Coins are the single currency. Cats, cat levels and board upgrades all cost coins. All upgrading happens on the map (story) screen, in the style of the owner's reference games (a chapter path with the next node highlighted, upgrade cards below, one big play button); there is no separate shop panel.
 - Art style: edgy cartoon. Thick black outlines, flat fills, grungy texture, spiked collars, grumpy faces, amber eyes. Palette: crimson background `#7E1236`, near-black `#0B0B0E` / `#16161C`, amber `#F2A81D` for buttons and eyes, pink-red `#E0285E` for pegs and highlights. Reference art: the Maine Coon (Macho) and Bengal (Rosette) illustrations in `art/` come from the owner's own AI-generated reference images.
 - Two cats exist so far: Macho (Maine Coon, melee, tank) and Rosette (Bengal, ranged sniper). More cats are wanted.
 - Do not copy other games' characters, art or branding. Mechanics are fair game, assets are not.
@@ -28,11 +28,11 @@ Cat Drop is game #1 of a planned app that collects the classic ad-riddled hybrid
 ## Files
 - `hub/hub.gd` (+ `hub.tscn`, the main scene): game picker, profile bar, achievements and settings overlays, toasts. Opens games with `open_game(id)` and listens to their `GameBase` signals.
 - `core/`: `game_base.gd` (common interface: `start(slot)`, signals `progress`, `finished`, `quit_requested`, `save_requested`), `save.gd` (autoload `Save`), `games.gd` (registry and tile progress text), `profile.gd` (XP to level, awarding), `achievements.gd` (definitions).
-- `games/catdrop/catdrop.gd`: the drop board (physics, balls, gates, cup), the shop, buttons, mode switching, HUD, and saving into its slot. Everything is drawn in code in `_draw()`. It reports XP and achievements to the hub through `progress`.
+- `games/catdrop/catdrop.gd`: the map screen and upgrade panel, the drop board (physics, balls, gates, cup), the map/drop/battle state machine (`state`), HUD, and saving into its slot. Everything is drawn in code in `_draw()`. It reports XP and achievements to the hub through `progress`.
 - `games/catdrop/battle.gd`: the battle grid. All fight maths is in `step(dt)` and has no dependency on rendering, so tests can run it thousands of times. Also placement, ownership, cat costs, banners.
 - `games/catdrop/ball.gd`: a single RigidBody2D ball. Balls collide with the board (layer 1) but not each other (layer 2).
 - `games/catdrop/catdrop.tscn`: just a Node2D with `catdrop.gd`. Everything else is created in code.
-- `games/catdrop/art/macho.png`, `rosette.png`: 256x256 face crops used on the grid and shop. These are placeholders for proper sprites.
+- `games/catdrop/art/macho.png`, `rosette.png`: 256x256 face crops used on the grid and upgrade panel. These are placeholders for proper sprites.
 - `tests/`: integration test (`test_game`), hub/platform test (`test_hub`), balance sweep, screenshot script (includes hub shots 8 to 12). See Testing.
 - Save file: `user://hub.cfg`, one section per game (`[catdrop]`: coins, levels, stats, bonus balls, wave, house HP, owned, grid) plus `[profile]` (xp, achievements) and `[settings]`. The old `user://catdrop.cfg` is migrated into `[catdrop]` on first run. To reset while developing, use Settings in the hub or delete `hub.cfg` (editor: Project > Open User Data Folder). Tests use `user://test_hub.cfg` via `Save.use_test_file()`, never your real save.
 
@@ -50,7 +50,7 @@ If you add a feature, add checks for it to `tests/test_game.gd`. If you change e
 ## Balance baselines (from `tests/sim_balance.gd`, optimal placement)
 - Roster to waves cleared in a 10-wave run: 1 Macho about 3; Macho + Rosette about 5; 2+2 about 7 to 8; 3+3 clears everything including the boss.
 - Economy: the base board earns about 100 coins per round of 12 balls. With more balls, coin value and gate upgrades it reaches about 630 per round. The Bigger Gates upgrade is very strong; consider raising its cost or capping it once more cats exist to spend coins on.
-- Cat costs: Macho 40, Rosette 60, each extra copy x1.35.
+- Cat costs: Macho 40, Rosette 60, each extra copy x1.35. Cat levels (new): 1 to 5, +20% health and damage per level, level-up cost = base cost x 2 x 1.7^(level-1) (Macho 80, 136, 231, 393). Level 1 is x1.0, so the roster numbers above are unchanged; the sweep does not yet use levels.
 
 ## Gotchas learned the hard way
 - Setting a `Label.size` before `add_child` is overwritten with the text width; set it after (see `_label` in `hub.gd`). Enable autowrap before turning off `clip_text`.
@@ -58,7 +58,7 @@ If you add a feature, add checks for it to `tests/test_game.gd`. If you change e
 - GDScript cannot infer a type from a Variant. `var x := some_dict["key"]` or `var busy := dropping or battle.active` fails to parse and stops the whole game loading. Write `var x: int = ...` or `var busy: bool = ...` whenever any part of the expression is untyped. Run the headless test after every edit to catch this.
 - The test shell can be killed by `pkill -f Godot...` because the pattern matches your own command line. Avoid `pkill -f`.
 - Physics callbacks cannot add bodies directly. Ball spawning from gates uses `call_deferred`.
-- Z-order: the battle node is added before the shop panel so the shop draws on top. Balls are added at runtime (later in the tree), so they would draw above the battle view, which is fine only because balls never exist while in battle mode (the mode button is locked while balls are in flight).
+- Z-order: the battle node and map panel are children added in `_ready`; balls are added at runtime (later in the tree), so they would draw above them, which is fine only because balls exist only in the drop state (you cannot leave the drop until every ball has landed).
 - Web export: turn off Thread Support so it works on a plain static host (Netlify Drop, GitHub Pages). iOS needs a Mac with Xcode; a free Apple ID build expires after 7 days.
 - Keep `tests/` out of release exports (Project > Export > Resources > exclude `tests/*`).
 

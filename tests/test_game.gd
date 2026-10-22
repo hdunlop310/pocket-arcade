@@ -1,5 +1,6 @@
 extends Node
-# Integration test: shop, cats, placement, input, waves, rewards, saving, defeat, boss.
+# Integration test for Cat Drop: map, upgrades, cat levels, placement, the one-drop round loop,
+# waves, rewards, saving, defeat, boss.
 # Run: see CLAUDE.md. Exits with code 1 if any check fails.
 var fails := 0
 func check(label: String, cond: bool) -> void:
@@ -20,6 +21,13 @@ func run_wave(m: Node2D, max_steps: int = 60000) -> void:
 	while m.battle.active and s < max_steps:
 		m.battle.step(1.0 / 12.0)
 		s += 1
+# Waits until the round's drop is finished (every ball landed). Returns false on timeout.
+func wait_for_round_over(m: Node2D) -> bool:
+	var guard := 0
+	while not m.round_over and guard < 4000:
+		await frames(1)
+		guard += 1
+	return m.round_over
 
 func _ready() -> void:
 	Save.use_test_file()
@@ -27,9 +35,10 @@ func _ready() -> void:
 	await frames(3)
 	var b = m.battle
 
-	check("battle node exists and starts hidden", b != null and not b.visible)
+	check("starts on the map, battle hidden, upgrade panel shown", m.state == "map" and not b.visible and m.map_panel.visible)
 	check("new game: 1 Macho owned and placed on tile 0", b.owned["macho"] == 1 and b.grid[0] == "macho" and b.owned["rosette"] == 0)
-	check("shop has rows for 2 cats and 3 upgrades", m.shop_rows.size() == 5)
+	check("map panel has rows for 2 cats and 3 upgrades", m.map_rows.size() == 5)
+	check("map button reads PLAY WAVE 1 and HUB is shown", m.main_btn.text == "PLAY WAVE 1" and m.home_btn.visible)
 
 	# Buying cats
 	check("cannot buy a cat with 0 coins", m.buy_cat("rosette") == false)
@@ -37,6 +46,19 @@ func _ready() -> void:
 	check("buy Rosette for 60", m.buy_cat("rosette") and m.coins == 440 and b.owned["rosette"] == 1)
 	check("second Rosette costs 81", b.cat_cost("rosette") == 81)
 	check("second Macho costs 54", b.cat_cost("macho") == 54)
+
+	# Cat levels, the long-term coin sink. Level 1 must leave the old balance untouched.
+	check("level 1 is x1.0 and a level-up costs 80 for Macho", b.level_mult("macho") == 1.0 and b.level_cost("macho") == 80 and b.cat_levels["macho"] == 1)
+	check("level-up button shows its price", m.map_rows["cat:macho"]["lvl"].text == "LEVEL UP 80")
+	check("level up Macho: coins drop, level 2, stats x1.2", m.upgrade_cat("macho") and m.coins == 360 and b.cat_levels["macho"] == 2 and is_equal_approx(b.level_mult("macho"), 1.2))
+	check("next Macho level costs 136", b.level_cost("macho") == 136)
+	m.coins = 5
+	check("cannot level up without the coins", m.upgrade_cat("macho") == false and b.cat_levels["macho"] == 2)
+	b.cat_levels["rosette"] = b.MAX_CAT_LEVEL
+	check("max level cannot be exceeded", b.can_level("rosette") == false and m.upgrade_cat("rosette") == false)
+	b.cat_levels["rosette"] = 1
+	b.cat_levels["macho"] = 1
+	m.coins = 440
 
 	# Placement rules
 	check("place Rosette on raised tile 4", b.place(4, "rosette"))
@@ -68,51 +90,82 @@ func _ready() -> void:
 	b.place(6, "rosette")
 	b.visible = false
 
-	# Mode switching and the start-wave button
-	m._toggle_mode()
+	# Drop phase: exactly one drop per round
+	m._drop_ball()
+	check("the drop does nothing from the map", m.dropped == false and m.balls_left == 12)
+	m._on_main_pressed()
 	await frames(2)
-	check("toggle moves to battle mode", m.mode == "battle" and b.visible)
+	check("PLAY moves to the drop board with a full set of balls", m.state == "drop" and m.balls_left == 12 and not m.map_panel.visible and not m.home_btn.visible)
+	check("button reads DROP ALL BALLS", m.main_btn.text == "DROP ALL BALLS" and not m.main_btn.disabled)
+	var coins_before_drop: int = m.coins
+	m._on_main_pressed()
+	await frames(3)
+	check("dropping uses the whole round at once", m.dropped and m.balls_left == 0 and m.main_btn.disabled)
+	m._drop_ball()
+	m._on_main_pressed()
+	check("a second drop in the same round is refused", m.balls_left == 0 and m.state == "drop")
+	check("the round ends once every ball has landed", await wait_for_round_over(m))
+	check("balls banked coins", m.coins > coins_before_drop and int(m.stats["balls_banked"]) > 0)
+	var coins_after_drop: int = m.coins
+	m._drop_ball()
+	await frames(5)
+	check("still no extra balls after round over", get_tree().get_nodes_in_group("balls").is_empty() and m.coins == coins_after_drop)
+	check("button reads TO BATTLE and the HUB button is hidden", m.main_btn.text == "TO BATTLE" and not m.home_btn.visible)
+
+	# Battle phase
+	m._on_main_pressed()
+	await frames(2)
+	check("TO BATTLE shows the battle grid", m.state == "battle" and b.visible)
 	check("button reads START WAVE 1", m.main_btn.text == "START WAVE 1" and not m.main_btn.disabled)
-	m._toggle_shop()
-	check("shop opens in battle mode", m.shop_open)
-	m._toggle_shop()
 
 	# A real wave through the button, rendering frames so _draw runs
+	var coins_before_wave: int = m.coins
 	m._on_main_pressed()
-	check("wave starts", b.active and m.main_btn.disabled == false or b.active)
+	check("wave starts", b.active)
 	await frames(90)
 	check("button reads FIGHTING while active", m.main_btn.text == "FIGHTING...")
-	check("shop and mode locked during a wave", m.shop_btn.disabled and m.mode_btn.disabled)
+	check("HUB button locked during a wave", m.home_btn.disabled)
 	run_wave(m)
 	await frames(2)
 	check("wave 1 cleared with Macho + Rosette", b.wave == 2 and b.house_hp > 0.0)
-	check("wave reward: +15 coins", m.coins == 440 + 15)
+	check("wave reward: +15 coins", m.coins == coins_before_wave + 15)
 	check("wave reward: +4 bonus balls", m.bonus_balls == 4)
+	check("a cleared wave heads back to the map", m.returning and m.state == "battle")
+	b.banner_t = 0.0
+	await frames(3)
+	check("after the banner the game returns to the map", m.state == "map" and m.map_panel.visible and not b.visible)
+	check("map button reads PLAY WAVE 2", m.main_btn.text == "PLAY WAVE 2")
 
-	# Back to drop mode: bonus joins the round
-	m._toggle_mode()
-	check("returning to drop mode adds bonus balls", m.mode == "drop" and m.balls_left == 12 + 4 and m.bonus_balls == 0)
+	# Bonus balls join the next round's drop, and are only spent when dropped
+	m._on_main_pressed()
+	check("next round has 12 + 4 bonus balls", m.state == "drop" and m.balls_left == 16 and m.bonus_balls == 4)
+	m._go_map()
+	check("leaving without dropping keeps the bonus", m.bonus_balls == 4 and m.state == "map")
 
 	# Persistence
 	var coins_now: int = m.coins
+	b.cat_levels["macho"] = 3
 	m._save_game()
 	m.queue_free()
 	await frames(2)
 	Save.reload()   # force a real round trip through the file on disk
 	var m2 := new_main()
 	await frames(3)
-	check("coins, wave, cats and grid reload", m2.coins == coins_now and m2.battle.wave == 2 and m2.battle.owned["rosette"] == 1 and m2.battle.grid[6] == "rosette" and m2.battle.grid[0] == "macho")
+	check("coins, wave, cats, levels and grid reload", m2.coins == coins_now and m2.battle.wave == 2 and m2.battle.owned["rosette"] == 1 and m2.battle.grid[6] == "rosette" and m2.battle.grid[0] == "macho" and m2.battle.cat_levels["macho"] == 3 and m2.bonus_balls == 4)
+	check("a reloaded game opens on the map", m2.state == "map")
 
 	# Defeat resets the run but keeps progress
 	var b2 = m2.battle
-	m2.mode = "battle"
+	m2.battle.cat_levels["macho"] = 1
 	for i in 16:
 		b2.grid[i] = ""
 	b2.grid[3] = "macho"
 	b2.wave = 8
+	m2.state = "battle"
 	b2.start_wave()
 	run_wave(m2)
 	check("a single Macho cannot hold wave 8: run fails and resets to wave 1", b2.wave == 1 and b2.house_hp == b2.HOUSE_MAX and b2.owned["macho"] == 1)
+	check("a failed wave also returns to the map", m2.returning)
 
 	# Boss wave and full run
 	for i in 16:
