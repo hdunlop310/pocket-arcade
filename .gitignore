@@ -1,0 +1,9 @@
+# Godot 4
+.godot/
+*.translation
+export_presets.cfg
+export/
+build/
+
+# Test output
+shots/
