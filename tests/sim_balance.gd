@@ -7,8 +7,8 @@ const BattleScript := preload("res://games/catdrop/battle.gd")
 const SEEDS := 6
 const STEP_DT := 1.0 / 12.0
 
-func place_roster(b, machos: int, rosettes: int) -> void:
-	b.owned = {"macho": machos, "rosette": rosettes}
+func place_roster(b, machos: int, rosettes: int, adoras: int = 0) -> void:
+	b.owned = {"macho": machos, "rosette": rosettes, "adora": adoras}
 	for i in 16:
 		b.grid[i] = ""
 	var macho_slots := [1, 0, 2, 3, 5, 7, 9, 15]
@@ -17,12 +17,15 @@ func place_roster(b, machos: int, rosettes: int) -> void:
 		b.grid[macho_slots[n]] = "macho"
 	for n in rosettes:
 		b.grid[rosette_slots[n]] = "rosette"
+	var adora_slots := [3, 2, 7, 15, 9, 5, 0, 1]
+	for n in adoras:
+		b.grid[adora_slots[n]] = "adora"
 
-func waves_cleared(machos: int, rosettes: int, seed_: int) -> int:
+func waves_cleared(machos: int, rosettes: int, seed_: int, adoras: int = 0) -> int:
 	var b = BattleScript.new()
 	add_child(b)
 	b.rng.seed = seed_
-	place_roster(b, machos, rosettes)
+	place_roster(b, machos, rosettes, adoras)
 	var cleared := 0
 	for w in 10:
 		b.start_wave()
@@ -41,14 +44,14 @@ func waves_cleared(machos: int, rosettes: int, seed_: int) -> int:
 	return cleared
 
 func _ready() -> void:
-	var rosters := [[1, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
+	var rosters := [[1, 0, 0], [1, 1, 0], [2, 2, 0], [3, 3, 0], [4, 4, 0], [5, 5, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [2, 2, 2]]
 	for r in rosters:
 		var total := 0
 		var full := 0
 		for s in SEEDS:
-			var c := waves_cleared(r[0], r[1], 1000 + s)
+			var c := waves_cleared(r[0], r[1], 1000 + s, r[2])
 			total += c
 			if c >= 10:
 				full += 1
-		print("ROSTER %dM+%dR (%d cats): avg waves cleared %.1f, full clears %d/%d" % [r[0], r[1], r[0] + r[1], float(total) / float(SEEDS), full, SEEDS])
+		print("ROSTER %dM+%dR+%dA (%d cats): avg waves cleared %.1f, full clears %d/%d" % [r[0], r[1], r[2], r[0] + r[1] + r[2], float(total) / float(SEEDS), full, SEEDS])
 	get_tree().quit()

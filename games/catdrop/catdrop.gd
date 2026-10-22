@@ -33,11 +33,11 @@ const UPGRADE_ORDER := ["balls", "coin", "gates"]
 const UPGRADES := {
 	"balls": {"name": "MORE BALLS", "base": 60.0, "growth": 1.7, "max": 5},
 	"coin": {"name": "COIN VALUE", "base": 80.0, "growth": 1.8, "max": 5},
-	"gates": {"name": "BIGGER GATES", "base": 400.0, "growth": 2.5, "max": 1},
+	"gates": {"name": "BIG GATES", "base": 400.0, "growth": 2.5, "max": 1},
 }
 
 # Progression: cats unlock as you clear waves, and the team can only grow as you push further.
-const CAT_UNLOCK_WAVE := {"macho": 0, "rosette": 2}   # waves you must have cleared before the cat can be bought
+const CAT_UNLOCK_WAVE := {"macho": 0, "rosette": 2, "adora": 4}   # waves you must have cleared before the cat can be bought
 const TEAM_BASE := 2                                   # cats you may own at the start; +1 for every wave cleared
 
 const CHAPTER_TITLE := "CHAPTER 1: THE MOUSE INVASION"
@@ -522,6 +522,35 @@ func _add_row(id_: String, title_: String, y: float, portrait: String, max_pips:
 	map_rows[id_] = {"desc": desc, "pips": pips, "buy": buy_btn, "lvl": lvl_btn, "badge": badge}
 
 
+func _add_up_card(key: String, x: float, y: float) -> void:
+	var card := Panel.new()
+	card.position = Vector2(x, y)
+	card.size = Vector2(110.0, 70.0)
+	card.add_theme_stylebox_override("panel", UIKit.box(Color("#262631"), UIKit.INK, 3, 12))
+	map_panel.add_child(card)
+	var name_label := _make_label(str(UPGRADES[key]["name"]), 12, UIKit.CREAM, true)
+	name_label.position = Vector2(x + 6.0, y + 0.0)
+	map_panel.add_child(name_label)
+	var desc := _make_label("", 10, COL_MUTED)
+	desc.position = Vector2(x + 7.0, y + 16.0)
+	map_panel.add_child(desc)
+	var pips := Control.new()
+	pips.position = Vector2(x + 7.0, y + 31.0)
+	map_panel.add_child(pips)
+	var max_pips: int = int(UPGRADES[key]["max"])
+	for p in max_pips:
+		var pip := Panel.new()
+		pip.position = Vector2(float(p) * (95.0 / float(max_pips)), 0.0)
+		pip.size = Vector2(95.0 / float(max_pips) - 3.0, 7.0)
+		pips.add_child(pip)
+	var buy_btn := Button.new()
+	buy_btn.position = Vector2(x + 5.0, y + 42.0)
+	buy_btn.size = Vector2(100.0, 24.0)
+	_style_button(buy_btn, COL_AMBER, COL_EDGE, 15)
+	map_panel.add_child(buy_btn)
+	map_rows["up:" + key] = {"desc": desc, "pips": pips, "buy": buy_btn, "lvl": null, "badge": null}
+
+
 func _build_map_panel() -> void:
 	map_panel = Panel.new()
 	map_panel.position = MAP_PANEL.position
@@ -547,7 +576,7 @@ func _build_map_panel() -> void:
 	map_panel.add_child(up_heading)
 	for i in UPGRADE_ORDER.size():
 		var key: String = UPGRADE_ORDER[i]
-		_add_row("up:" + key, str(UPGRADES[key]["name"]), up_y + 16.0 + float(i) * ROW_STEP, "", int(UPGRADES[key]["max"]), false)
+		_add_up_card(key, 10.0 + float(i) * 115.0, up_y + 16.0)
 		var up_btn: Button = map_rows["up:" + key]["buy"]
 		up_btn.pressed.connect(func(): buy(key))
 
@@ -555,9 +584,9 @@ func _build_map_panel() -> void:
 func _desc_for(key: String) -> String:
 	match key:
 		"balls":
-			return "%d > %d balls per round" % [balls_per_round(), balls_per_round() + BALLS_STEP]
+			return "%d > %d balls" % [balls_per_round(), balls_per_round() + BALLS_STEP]
 		"coin":
-			return "%d > %d coins per ball" % [coins_per_ball(), coins_per_ball() + 1]
+			return "%d > %d coins/ball" % [coins_per_ball(), coins_per_ball() + 1]
 		"gates":
 			return "+1 on every gate"
 	return ""

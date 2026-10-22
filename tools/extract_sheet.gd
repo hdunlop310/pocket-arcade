@@ -1,34 +1,53 @@
 extends SceneTree
-# Cuts an AI-generated 8-frame action sheet (2 columns x 4 rows, labels above each frame, flat grey
-# background, yellow perch tile under the cat) into a game atlas. Not needed at game time.
+# Cuts an AI-generated 8-frame action sheet (2 columns x 4 rows, a label for each frame, a perch tile
+# under the cat) into a game atlas. Not needed at game time.
 #
 #   GODOT --headless --path . --script tools/extract_sheet.gd -- macho
-#   GODOT --headless --path . --script tools/extract_sheet.gd -- rosette
+#   (names: macho, rosette, macho_run, adora)
 #
-# Per frame: make the grey background transparent, delete the label text, keep the cat (and anything
-# attached or close to it, like a muzzle flash), erase the perch tile, scale down, and place the
-# frame in a fixed-size atlas cell so the spot where the perch was (the ground under the cat) lands on
-# the same pixel in every frame. Output: games/catdrop/art/<name>_anim.png, 4 columns x 2 rows, in
-# sheet order. Sources live in art_src/ (ignored by Godot's importer).
-#   macho:   1 idle, 2 wind-up, 3 lunge, 4 claw swipe, 5 furious bite, 6 impact, 7 retreat, 8 landing
-#   rosette: 1 idle, 2 aiming, 3 the shot, 4 recoil, 5 bolt pull, 6 bolt push, 7 target lock, 8 return to idle
+# Per frame: make the background transparent, delete label text and any big panel art, keep the cat (and
+# anything attached or close to it, like a muzzle flash), erase the perch tile, scale down, and place the
+# frame in a fixed-size atlas cell so the spot where the perch was (the ground under the cat) lands on the
+# same pixel in every frame. Output: games/catdrop/art/<out>.png, 4 columns x 2 rows, in sheet order.
+# Sources live in art_src/ (ignored by Godot's importer).
+#   macho:     1 idle, 2 wind-up, 3 lunge, 4 claw swipe, 5 furious bite, 6 impact, 7 retreat, 8 landing
+#   rosette:   1 idle, 2 aiming, 3 the shot, 4 recoil, 5 bolt pull, 6 bolt push, 7 target lock, 8 return to idle
+#   macho_run: 1 start, 2 front push, 3 extension, 4 front strike, 5 drive, 6 mid-stride, 7 high-speed leap, 8 landing
+#   adora:     1 idle, 2 crouch and leap, 3 mid-air spin, 4 acrobatic slash, 5 aerial kick, 6 agile landing, 7 backflip, 8 return to idle
+#
+# bg "grey": a flat grey background that the black outline walls off from the fur (flood from the border).
+# bg "red": a dark red grunge background; the flood also crosses the big panel's border line (erased by hand).
 
 const SHEETS := {
-	"macho": "res://art_src/macho_attack_sheet.webp",
-	"rosette": "res://art_src/rosette_attack_sheet.webp",
+	"macho": {
+		"file": "res://art_src/macho_attack_sheet.webp", "out": "macho_anim", "bg": "grey",
+		"label_bands": [Vector2i(16, 72), Vector2i(258, 314), Vector2i(502, 563), Vector2i(742, 802)],
+		"row_splits": [264, 520, 762], "col_split": 343, "min_x": 0, "border_x": -1,
+		# frames where effects or the tail hide the perch: its centre by hand, in sheet pixels, by frame index
+		"anchors": {3: Vector2(460.0, 467.0), 7: Vector2(503.0, 962.0)},
+	},
+	"rosette": {
+		"file": "res://art_src/rosette_attack_sheet.webp", "out": "rosette_anim", "bg": "grey",
+		"label_bands": [Vector2i(16, 72), Vector2i(258, 314), Vector2i(502, 563), Vector2i(742, 802)],
+		"row_splits": [264, 520, 762], "col_split": 343, "min_x": 0, "border_x": -1, "anchors": {},
+	},
+	"macho_run": {
+		"file": "res://art_src/macho_run_sheet.webp", "out": "macho_run_anim", "bg": "red",
+		"label_bands": [Vector2i(30, 94), Vector2i(236, 264), Vector2i(478, 508), Vector2i(714, 744), Vector2i(974, 1008)],
+		"row_splits": [268, 508, 748], "col_split": 488, "min_x": 300, "max_x": 668, "border_x": 339, "anchors": {},
+	},
+	"adora": {
+		"file": "res://art_src/adora_sheet.webp", "out": "adora_anim", "bg": "red",
+		"label_bands": [Vector2i(236, 264), Vector2i(478, 508), Vector2i(714, 744), Vector2i(974, 1008)],
+		"row_splits": [268, 508, 748], "col_split": 488, "min_x": 345, "max_x": 668, "border_x": 345, "anchors": {},
+	},
 }
 const CELL := Vector2i(192, 112)
 const ANCHOR := Vector2i(80, 84)     # where the ground point sits in every cell
 const SCALE := 0.32
 const COLS := 4
-# Label rows on the sheet (y ranges); art rows are split halfway between them.
-const LABEL_BANDS := [Vector2i(16, 72), Vector2i(258, 314), Vector2i(502, 563), Vector2i(742, 802)]
-const ROW_SPLITS := [264, 520, 762]
-const COL_SPLIT := 343
-# Frames where effects or the tail hide the perch: its centre by hand, in sheet pixels, per sheet.
-const ANCHOR_OVERRIDES := {
-	"macho": {3: Vector2(460.0, 467.0), 7: Vector2(503.0, 962.0)},
-}
+
+var cfg: Dictionary
 
 
 func lum(c: Color) -> float:
@@ -36,16 +55,33 @@ func lum(c: Color) -> float:
 
 
 func is_bg(c: Color) -> bool:
-	return absf(c.r - 0.23) < 0.05 and absf(c.g - 0.23) < 0.05 and absf(c.b - 0.23) < 0.05
+	if cfg["bg"] == "grey":
+		return absf(c.r - 0.23) < 0.05 and absf(c.g - 0.23) < 0.05 and absf(c.b - 0.23) < 0.05
+	# red grunge: strongly red and dark, never grey, white, black or yellow
+	return c.r > 0.035 and c.r > 3.0 * c.g and c.r > 3.0 * c.b and c.r < 0.45
 
 
 # The perch outline colour: a warm yellow-orange, including its darker anti-aliased edge. Tuned by ratios
 # so fur (more orange), eyes (more yellow), cream bellies and blood (red) do not match.
 func is_perch(c: Color) -> bool:
-	if c.a < 0.5 or c.r < 0.5:
+	if c.a < 0.5 or c.r < (0.5 if cfg["bg"] == "grey" else 0.25):
 		return false
 	var gr := c.g / c.r
-	return gr >= 0.70 and gr <= 0.90 and c.b / c.r < 0.5
+	return gr >= 0.70 and gr <= 0.92 and c.b / c.r < 0.55
+
+
+# A piece whose average colour is red is background grunge, not part of a cat (red sheets only).
+func is_grunge(c: Dictionary, img: Image) -> bool:
+	var sum := Color(0, 0, 0, 0)
+	var n := 0
+	var px: Array = c["pixels"]
+	for i in range(0, px.size(), 5):
+		sum += img.get_pixelv(px[i])
+		n += 1
+	if n == 0:
+		return false
+	var m := sum / float(n)
+	return m.r > 2.0 * m.g and m.r > 2.0 * m.b
 
 
 func components(mask: PackedByteArray, w: int, h: int) -> Array:
@@ -77,14 +113,14 @@ func components(mask: PackedByteArray, w: int, h: int) -> Array:
 func cell_of(r: Rect2i) -> int:
 	var c := r.get_center()
 	var row := 0
-	for s in ROW_SPLITS:
+	for s in cfg["row_splits"]:
 		if c.y >= s:
 			row += 1
-	return row * 2 + (0 if c.x < COL_SPLIT else 1)
+	return row * 2 + (0 if c.x < int(cfg["col_split"]) else 1)
 
 
 func in_label_band(r: Rect2i) -> bool:
-	for b in LABEL_BANDS:
+	for b in cfg["label_bands"]:
 		if r.position.y >= b.x and r.end.y <= b.y:
 			return true
 	return false
@@ -97,19 +133,30 @@ func _init() -> void:
 		push_error("unknown sheet " + name)
 		quit(1)
 		return
+	cfg = SHEETS[name]
 	var img := Image.new()
-	if img.load(ProjectSettings.globalize_path(SHEETS[name])) != OK:
-		push_error("cannot load " + SHEETS[name])
+	if img.load(ProjectSettings.globalize_path(cfg["file"])) != OK:
+		push_error("cannot load " + str(cfg["file"]))
 		quit(1)
 		return
 	img.convert(Image.FORMAT_RGBA8)
 	var w := img.get_width()
 	var h := img.get_height()
 
-	# 1. everything that is not the flat grey background. Only grey connected to the border counts as
-	# background: the cat's dark fur is nearly the same grey, but the black outline walls it off.
+	# 1. background = bg-coloured pixels connected to the border. Only those count: the cat's fur can be
+	# nearly the same colour, but its outline walls it off.
 	var outside := PackedByteArray()
 	outside.resize(w * h)
+	# a panel border line (a dark vertical stripe) is erased so the flood can cross it
+	var border_cols := {}
+	if int(cfg["border_x"]) >= 0:
+		for x in range(int(cfg["border_x"]) - 14, int(cfg["border_x"]) + 14):
+			var dark := 0
+			for y in range(30, h - 30):
+				if lum(img.get_pixel(x, y)) < 0.10:
+					dark += 1
+			if float(dark) > 0.6 * float(h - 60):
+				border_cols[x] = true
 	var flood: Array[Vector2i] = []
 	for x in w:
 		flood.append(Vector2i(x, 0))
@@ -119,7 +166,9 @@ func _init() -> void:
 		flood.append(Vector2i(w - 1, y))
 	while not flood.is_empty():
 		var p: Vector2i = flood.pop_back()
-		if p.x < 0 or p.y < 0 or p.x >= w or p.y >= h or outside[p.y * w + p.x] == 1 or not is_bg(img.get_pixelv(p)):
+		if p.x < 0 or p.y < 0 or p.x >= w or p.y >= h or outside[p.y * w + p.x] == 1:
+			continue
+		if not (is_bg(img.get_pixelv(p)) or border_cols.has(p.x) or p.x >= int(cfg.get("max_x", 99999))):
 			continue
 		outside[p.y * w + p.x] = 1
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -129,14 +178,20 @@ func _init() -> void:
 	for i in w * h:
 		solid[i] = 1 - outside[i]
 
-	# 2. pieces: drop label text, group the rest by cell
+	# 2. pieces: drop label text and panel art, group the rest by cell
 	var per_cell: Array = []
 	for n in 8:
 		per_cell.append([])
 	for c in components(solid, w, h):
-		if in_label_band(c["rect"]) or c["pixels"].size() < 12:
+		var r: Rect2i = c["rect"]
+		if in_label_band(r) or c["pixels"].size() < 12 or r.get_center().x < int(cfg["min_x"]) or r.size.x > 260:
 			continue
-		per_cell[cell_of(c["rect"])].append(c)
+		if cfg["bg"] == "red" and is_grunge(c, img):
+			continue
+		# thin long pieces are panel border lines, not cats
+		if maxi(r.size.x, r.size.y) >= 180 and float(c["pixels"].size()) < 0.12 * float(r.size.x * r.size.y):
+			continue
+		per_cell[cell_of(r)].append(c)
 
 	var rows := 2
 	var atlas := Image.create(CELL.x * COLS, CELL.y * rows, false, Image.FORMAT_RGBA8)
@@ -149,7 +204,7 @@ func _init() -> void:
 		for c in comps:
 			if c["pixels"].size() > main["pixels"].size():
 				main = c
-		var keep_rect: Rect2i = (main["rect"] as Rect2i).grow(30)
+		var keep_rect: Rect2i = (main["rect"] as Rect2i).grow(30 if cfg["bg"] == "grey" else 8)
 		var bounds: Rect2i = main["rect"]
 		var kept: Array = []
 		for c in comps:
@@ -206,7 +261,8 @@ func _init() -> void:
 			for y in fh:
 				for x in fw:
 					var c := frame.get_pixel(x, y)
-					if c.a < 0.5 or lum(c) > 0.12 or not Geometry2D.is_point_in_polygon(Vector2(x, y), hull):
+					var reddish: bool = cfg["bg"] == "red" and c.r > 2.0 * c.g and c.r > 2.0 * c.b
+					if c.a < 0.5 or (lum(c) > 0.12 and not reddish) or not Geometry2D.is_point_in_polygon(Vector2(x, y), hull):
 						continue
 					var near_cat := false
 					for dy in range(-2, 3):
@@ -217,9 +273,8 @@ func _init() -> void:
 								near_cat = true
 					if not near_cat:
 						frame.set_pixel(x, y, Color(0, 0, 0, 0))
-
-		if ANCHOR_OVERRIDES.has(name) and ANCHOR_OVERRIDES[name].has(n):
-			anchor = ANCHOR_OVERRIDES[name][n] - Vector2(bounds.position)
+		if cfg["anchors"].has(n):
+			anchor = cfg["anchors"][n] - Vector2(bounds.position)
 
 		# 4. scale and place so the perch centre lands on ANCHOR
 		frame.resize(int(round(fw * SCALE)), int(round(fh * SCALE)), Image.INTERPOLATE_LANCZOS)
@@ -232,7 +287,7 @@ func _init() -> void:
 		sub.blend_rect(frame, Rect2i(Vector2i.ZERO, frame.get_size()), dst)
 		atlas.blend_rect(sub, Rect2i(Vector2i.ZERO, CELL), origin)
 		print("frame ", n + 1, " pieces ", kept.size(), " sheet anchor ", anchor + Vector2(bounds.position), " placed ", placed)
-	var out := "res://games/catdrop/art/%s_anim.png" % name
+	var out := "res://games/catdrop/art/%s.png" % cfg["out"]
 	atlas.save_png(ProjectSettings.globalize_path(out))
 	print("saved ", out, " ", atlas.get_size())
 	quit()

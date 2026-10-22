@@ -23,10 +23,11 @@ func _ready() -> void:
 	await frames(5)
 	m.coins = 520
 	m.battle.wave = 4
-	m.stats["best_wave"] = 3
+	m.stats["best_wave"] = 4
 	m._refresh_panel()
 	await snap("1_map")
 	m.buy_cat("rosette")
+	m.buy_cat("adora")
 	m.upgrade_cat("macho")
 	await frames(2)
 	await snap("2_map_upgraded")
@@ -43,6 +44,7 @@ func _ready() -> void:
 	await snap("5_round_over")
 	b.place(4, "rosette")
 	b.place(1, "macho")
+	b.place(2, "adora")
 	m._on_main_pressed()
 	await frames(3)
 	await snap("6_battle_place")
@@ -56,7 +58,7 @@ func _ready() -> void:
 	# Macho running out and attacking, on a standalone battle so the moment is easy to catch
 	var bt = load("res://games/catdrop/battle.gd").new()
 	add_child(bt)
-	bt.owned = {"macho": 1, "rosette": 0}
+	bt.owned = {"macho": 1, "rosette": 0, "adora": 0}
 	for i in 16:
 		bt.grid[i] = ""
 	bt.grid[8] = "macho"

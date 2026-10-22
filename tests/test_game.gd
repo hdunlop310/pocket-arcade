@@ -37,7 +37,7 @@ func _ready() -> void:
 
 	check("starts on the map, battle hidden, upgrade panel shown", m.state == "map" and not b.visible and m.map_panel.visible)
 	check("new game: 1 Macho owned and placed on tile 0", b.owned["macho"] == 1 and b.grid[0] == "macho" and b.owned["rosette"] == 0)
-	check("map panel has rows for 2 cats and 3 upgrades", m.map_rows.size() == 5)
+	check("map panel has rows for 3 cats and 3 upgrades", m.map_rows.size() == 6)
 	check("map button reads PLAY WAVE 1 and HUB is shown", m.main_btn.text == "PLAY WAVE 1" and m.home_btn.visible)
 
 	# Buying cats
@@ -180,7 +180,7 @@ func _ready() -> void:
 	# Boss wave and full run
 	for i in 16:
 		b2.grid[i] = ""
-	b2.owned = {"macho": 5, "rosette": 5}
+	b2.owned = {"macho": 5, "rosette": 5, "adora": 0}
 	for n in [0, 1, 2, 3, 5]:
 		b2.grid[n] = "macho"
 	for n in [4, 6, 11, 12, 8]:
@@ -202,7 +202,7 @@ func _ready() -> void:
 	# Melee charge: Macho runs to the most advanced mouse anywhere (any lane, no leash), holds it, and comes home
 	var bt = load("res://games/catdrop/battle.gd").new()
 	add_child(bt)
-	bt.owned = {"macho": 1, "rosette": 0}
+	bt.owned = {"macho": 1, "rosette": 0, "adora": 0}
 	for i in 16:
 		bt.grid[i] = ""
 	bt.grid[8] = "macho"
@@ -244,6 +244,48 @@ func _ready() -> void:
 	bt.active = false
 	check("the tile bonuses only apply on the tile", bt._cat_damage_mult(8) == bt._tile_damage_mult(8))
 	bt.queue_free()
+
+	# Adora: locked until wave 4, weakest-mouse targeting, backstab on the first hit, dodge, speed
+	m2.battle.owned = {"macho": 1, "rosette": 1, "adora": 0}
+	m2.stats["best_wave"] = 3
+	m2._refresh_panel()
+	check("Adora starts locked behind wave 4", not m2.cat_unlocked("adora") and m2.map_rows["cat:adora"]["buy"].text == "LOCKED")
+	m2.stats["best_wave"] = 4
+	m2.coins = 500
+	m2._refresh_panel()
+	check("clearing wave 4 unlocks Adora, who costs 70", m2.cat_unlocked("adora") and m2.battle.cat_cost("adora") == 70 and m2.buy_cat("adora") and m2.coins == 430 and m2.battle.owned["adora"] == 1)
+	var ba = load("res://games/catdrop/battle.gd").new()
+	add_child(ba)
+	ba.owned = {"macho": 0, "rosette": 0, "adora": 1}
+	for i in 16:
+		ba.grid[i] = ""
+	ba.grid[9] = "adora"
+	ba.start_wave()
+	ba.spawn_queue = []
+	var home_a: Vector2 = ba.tile_center(9)
+	var mk := func(x: float, y: float, hp: float, kind: String) -> Dictionary:
+		return {"kind": kind, "col": 1, "x": x, "y": y, "dead": false, "hp": hp, "max": hp, "dps": 0.0, "speed": 0.0, "house": 5.0, "held_by": -1}
+	var weak: Dictionary = mk.call(home_a.x, 230.0, 30.0, "mouse")
+	var strong: Dictionary = mk.call(home_a.x, 300.0, 100.0, "mouse")
+	var boss: Dictionary = mk.call(home_a.x, 420.0, 2500.0, "boss")
+	ba.enemies = [strong, boss, weak]
+	check("Adora goes for the weakest mouse, not the most advanced or the boss", ba._pick_charge_target(9) == weak)
+	check("Adora runs faster than the others", float(ba.CAT_TYPES["adora"]["speed"]) > ba.CHARGE_SPEED)
+	check("Adora takes 25% less damage", is_equal_approx(ba._cat_damage_mult(9), ba._tile_damage_mult(9) * 0.75))
+	var dummy: Dictionary = mk.call(home_a.x, home_a.y - 30.0, 500.0, "mouse")
+	ba.enemies = [dummy]
+	ba.cats[9]["target"] = dummy
+	var drops: Array = []
+	var last_hp := 500.0
+	var asteps := 0
+	while drops.size() < 3 and asteps < 400:
+		ba.step(1.0 / 12.0)
+		asteps += 1
+		if float(dummy["hp"]) < last_hp - 0.01:
+			drops.append(snappedf(last_hp - float(dummy["hp"]), 0.01))
+			last_hp = float(dummy["hp"])
+	check("her first hit on a mouse is a backstab (x2), later hits are normal", drops.size() >= 3 and drops[0] == 18.0 and drops[1] == 9.0 and drops[2] == 9.0)
+	ba.queue_free()
 
 	print("TEST: done, failures=", fails)
 	get_tree().quit(1 if fails > 0 else 0)

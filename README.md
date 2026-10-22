@@ -25,7 +25,7 @@ A Godot 4 project (4.3 or newer). The app opens on the hub: a game picker with a
 
 ## The map and upgrades
 - The map shows the 10 waves of the chapter as a path, with a line of story for the current wave. Under it is the upgrade panel. Coins buy:
-  - CATS: Macho (40 coins) and Rosette (60 coins, unlocks after you clear wave 2). Your team can hold 2 cats plus one more for every wave you clear. Each extra copy of the same cat costs 35% more, up to 10 of each.
+  - CATS: Macho (40 coins), Rosette (60 coins, unlocks after you clear wave 2) and Adora (70 coins, unlocks after wave 4). Your team can hold 2 cats plus one more for every wave you clear. Each extra copy of the same cat costs 35% more, up to 10 of each.
   - CAT LEVELS: LEVEL UP makes every copy of that cat 20% tougher and stronger, up to level 5 (Macho costs 80, 136, 231, 393).
   - MORE BALLS: +1 ball per round, up to 5 levels (costs 60, 102, 173, ...).
   - COIN VALUE: +1 coin per ball, up to 5 levels (costs 80, 144, 259, ...).

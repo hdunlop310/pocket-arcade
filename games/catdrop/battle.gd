@@ -42,10 +42,11 @@ const HOUSE_REGEN := 10.0
 const MAX_OWNED := 10
 const SPAWN_INTERVAL := 0.8
 
-const CAT_ORDER := ["macho", "rosette"]
+const CAT_ORDER := ["macho", "rosette", "adora"]
 const CAT_TYPES := {
 	"macho": {"name": "MACHO", "role": "MELEE", "kind": "melee", "hp": 150.0, "dmg": 14.0, "interval": 0.7, "reach": 86.0, "cost": 40.0},
 	"rosette": {"name": "ROSETTE", "role": "RANGED", "kind": "ranged", "hp": 50.0, "dmg": 34.0, "interval": 1.5, "range": 300.0, "cost": 60.0},
+	"adora": {"name": "ADORA", "role": "MELEE", "kind": "melee", "hp": 90.0, "dmg": 9.0, "interval": 0.45, "reach": 86.0, "cost": 70.0, "speed": 230.0, "sneak": 2.0, "dodge": 0.25},
 }
 # Melee cats leave their tile, run to the most advanced mouse anywhere on the field, hold it and fight it.
 const CHARGE_SPEED := 150.0         # px/s, out and back
@@ -88,8 +89,8 @@ const COL_MOUSE := Color("#8C8C99")
 # --- State -------------------------------------------------------------------
 var wave := 1
 var house_hp := HOUSE_MAX
-var owned := {"macho": 1, "rosette": 0}
-var cat_levels := {"macho": 1, "rosette": 1}
+var owned := {"macho": 1, "rosette": 0, "adora": 0}
+var cat_levels := {"macho": 1, "rosette": 1, "adora": 1}
 var grid: Array = []          # 16 entries: "" or a cat key
 var selected := ""
 var active := false
@@ -106,6 +107,7 @@ var banner_t := 0.0
 var rng := RandomNumberGenerator.new()
 var textures := {}
 var anim_tex := {}   # cat key -> action sprite atlas
+var run_tex := {}    # cat key -> run-cycle atlas (optional)
 var fx := Fx.new()
 var slashes: Array = []   # {pos, t}: melee slash arcs
 
@@ -120,6 +122,9 @@ func _ready() -> void:
 		var anim_path := "res://games/catdrop/art/%s_anim.png" % k
 		if ResourceLoader.exists(anim_path):
 			anim_tex[k] = load(anim_path)
+		var run_path := "res://games/catdrop/art/%s_run_anim.png" % k
+		if ResourceLoader.exists(run_path):
+			run_tex[k] = load(run_path)
 
 
 func _init_grid() -> void:
@@ -262,7 +267,7 @@ func tile_at(p: Vector2) -> int:
 
 
 func _chip_rect(slot: int) -> Rect2:
-	return Rect2(26.0 + float(slot) * 176.0, 176.0, 166.0, 44.0)
+	return Rect2(22.0 + float(slot) * 118.0, 176.0, 112.0, 44.0)
 
 
 # ----------------------------------------------------------------------------
@@ -371,7 +376,7 @@ func is_charging(i: int) -> bool:
 
 func _cat_damage_mult(i: int) -> float:
 	# The tile bonuses only apply while the cat is standing on its tile.
-	return 1.0 if is_charging(i) else _tile_damage_mult(i)
+	return (1.0 if is_charging(i) else _tile_damage_mult(i)) * (1.0 - float(CAT_TYPES[cats[i]["key"]].get("dodge", 0.0)))
 
 
 func _pick_charge_target(i: int) -> Dictionary:
@@ -379,6 +384,16 @@ func _pick_charge_target(i: int) -> Dictionary:
 	var cur = cats[i]["target"]
 	if cur is Dictionary and not cur["dead"]:
 		return cur
+	if cats[i]["key"] == "adora":
+		var weakest: Dictionary = {}
+		var low := INF
+		for e in enemies:
+			if not e["dead"] and e["kind"] != "boss" and float(e["hp"]) < low:
+				weakest = e
+				low = float(e["hp"])
+		if not weakest.is_empty():
+			cats[i]["target"] = weakest
+			return weakest
 	var best: Dictionary = {}
 	var best_y := -1.0
 	for e in enemies:
@@ -402,7 +417,7 @@ func _move_melee(i: int, dt: float) -> void:
 			cat["face"] = signf(tp.x - pos.x)
 		if gap <= MELEE_CONTACT and int(target["held_by"]) < 0:
 			target["held_by"] = i
-	var np := pos.move_toward(goal, CHARGE_SPEED * dt)
+	var np := pos.move_toward(goal, float(CAT_TYPES[cat["key"]].get("speed", CHARGE_SPEED)) * dt)
 	np.x = clampf(np.x, FIELD.position.x + 22.0, FIELD.end.x - 22.0)
 	np.y = clampf(np.y, SPAWN_Y, GRID_BOTTOM)
 	cat["x"] = np.x
@@ -505,6 +520,10 @@ func step(dt: float) -> void:
 			continue
 		var def: Dictionary = CAT_TYPES[cat["key"]]
 		var dmg: float = float(def["dmg"]) * level_mult(cat["key"])
+		if def.has("sneak") and not target.get("stabbed", false):
+			dmg *= float(def["sneak"])
+			target["stabbed"] = true
+			fx.popup(Vector2(float(target["x"]), float(target["y"]) - 30.0), "SNEAK!", Color("#FFFFFF"), 14, 0.7)
 		target["hp"] = float(target["hp"]) - dmg
 		cat["cd"] = float(def["interval"])
 		cat["atk_t"] = 0.0
@@ -651,6 +670,21 @@ func _draw_cat_card(key: String, rect: Rect2, dead: bool) -> void:
 
 func _sprite_frame(cat: Dictionary) -> int:
 	var atk := float(cat["atk_t"])
+	if cat["key"] == "adora":
+		# Adora: idle 0, crouch and leap 1, mid-air spin 2, acrobatic slash 3, aerial kick 4, agile landing 5, backflip 6, return to idle 7.
+		if atk < 0.45:
+			if atk < 0.07:
+				return 1
+			if atk < 0.15:
+				return 2
+			if atk < 0.25:
+				return 3 if int(cat["n_atk"]) % 2 == 1 else 4
+			if atk < 0.33:
+				return 5
+			return 6
+		if cat["moving"]:
+			return 1 if int(float(cat["phase"]) / 3.0) % 2 == 0 else 5   # bounding hops: leap, land
+		return 0
 	if CAT_TYPES[cat["key"]]["kind"] == "ranged":
 		# Rosette: idle 0, aiming 1, the shot 2, recoil 3, bolt pull 4, bolt push 5, target lock 6.
 		if atk < 0.12:
@@ -689,10 +723,14 @@ func _draw_cat_sprite(i: int, center: Vector2, dead: bool) -> void:
 		face = float(cat["face"])
 		if not dead:
 			frame = _sprite_frame(cat)
+	var tex: Texture2D = anim_tex[key]
+	if cat != null and not dead and run_tex.has(key) and cat["moving"] and float(cat["atk_t"]) >= 0.41:
+		tex = run_tex[key]
+		frame = 1 + int(float(cat["phase"]) / 1.5) % 6   # run cycle: push, extension, strike, drive, stride, leap
 	var ground := center + Vector2(0.0, 18.0)
 	var src := Rect2(Vector2(float(frame % ANIM_COLS) * ANIM_CELL.x, float(frame / ANIM_COLS) * ANIM_CELL.y), ANIM_CELL)
 	draw_set_transform(ground, 0.0, Vector2(face, 1.0))
-	draw_texture_rect_region(anim_tex[key], Rect2(-ANIM_ANCHOR, ANIM_CELL), src, Color(1.0, 1.0, 1.0, 0.4) if dead else Color.WHITE)
+	draw_texture_rect_region(tex, Rect2(-ANIM_ANCHOR, ANIM_CELL), src, Color(1.0, 1.0, 1.0, 0.4) if dead else Color.WHITE)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -811,8 +849,8 @@ func _draw() -> void:
 			var sel := selected == key
 			UIKit.panel(self, cr, Color("#3A2A12") if sel else UIKit.INK_SOFT, UIKit.AMBER if sel else UIKit.INK, 3, 10, 3)
 			_draw_portrait(key, Rect2(cr.position.x + 6.0, cr.position.y + 6.0, 30.0, 30.0), false)
-			UIKit.text(self, Vector2(cr.position.x + 44.0, cr.position.y + 20.0), str(CAT_TYPES[key]["name"]), 15, UIKit.CREAM, UIKit.INK, 4)
-			draw_string(font, Vector2(cr.position.x + 44.0, cr.position.y + 37.0), "%d spare" % spare(key), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, COL_AMBER if spare(key) > 0 else COL_MUTED)
+			UIKit.text(self, Vector2(cr.position.x + 40.0, cr.position.y + 20.0), str(CAT_TYPES[key]["name"]), 13, UIKit.CREAM, UIKit.INK, 4)
+			draw_string(font, Vector2(cr.position.x + 40.0, cr.position.y + 37.0), "%d spare" % spare(key), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, COL_AMBER if spare(key) > 0 else COL_MUTED)
 		var hint := "Tap a cat above, then a tile. Tap a placed cat to pick it up."
 		draw_string(font, Vector2(FIELD.position.x, 246.0), hint, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, 12, COL_MUTED)
 		draw_string(font, Vector2(FIELD.position.x, 264.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, 11, COL_MUTED)
