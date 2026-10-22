@@ -189,5 +189,48 @@ func _ready() -> void:
 	check("boss appears on wave 10", saw_boss)
 	check("10 well-placed cats beat the boss, run completes", b2.wave == 1 and m2.coins >= before + 15 * 10 + 200)
 
+	# Melee charge: Macho runs out of his tile up his lane, within the leash, and comes home
+	var bt = load("res://games/catdrop/battle.gd").new()
+	add_child(bt)
+	bt.owned = {"macho": 1, "rosette": 0}
+	for i in 16:
+		bt.grid[i] = ""
+	bt.grid[8] = "macho"
+	bt.wave = 3
+	bt.start_wave()
+	var home_y: float = bt.tile_center(8).y
+	var min_y := 99999.0
+	var saw_charge := false
+	var blocked_ok := true
+	var csteps := 0
+	while bt.active and csteps < 20000:
+		bt.step(1.0 / 12.0)
+		csteps += 1
+		if bt.cats[8] == null:
+			continue
+		var cy: float = bt.cats[8]["y"]
+		min_y = minf(min_y, cy)
+		if bt.is_charging(8):
+			saw_charge = true
+		for e in bt.enemies:
+			if absf(float(e["x"]) - bt.tile_center(8).x) < 48.0 and bt.cats[8]["alive"]:
+				# no mouse in this lane may get past the cat that is blocking it
+				if float(e["y"]) > cy - bt.BLOCK_OFFSET + 1.0 and float(e["y"]) < cy + 20.0 and float(e["y"]) > cy - 5.0:
+					blocked_ok = false
+	check("Macho leaves his tile to meet mice", saw_charge and min_y < home_y - 20.0)
+	check("Macho stays inside the leash", min_y >= home_y - bt.CHARGE_LEASH - 0.01)
+	check("a mouse never gets past the charging cat", blocked_ok)
+	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "y": home_y - 100.0}
+	bt.enemies = []
+	bt.spawn_queue = ["mouse"]
+	bt.spawn_timer = 1000.0
+	bt.active = true
+	for k in 12:
+		bt.step(1.0 / 12.0)
+	check("with the lane clear he runs back to his tile", absf(float(bt.cats[8]["y"]) - home_y) < 0.01 and not bt.is_charging(8))
+	bt.active = false
+	check("the tile bonuses only apply on the tile", bt._cat_damage_mult(8) == bt._tile_damage_mult(8))
+	bt.queue_free()
+
 	print("TEST: done, failures=", fails)
 	get_tree().quit(1 if fails > 0 else 0)

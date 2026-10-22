@@ -29,5 +29,6 @@ func _ready() -> void:
 
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, RADIUS + 1.5, Color("#0B0B0E"))
-	draw_circle(Vector2.ZERO, RADIUS, Color("#F4F4F6"))
+	draw_circle(Vector2.ZERO, RADIUS + 1.8, Color("#0B0B0E"))
+	draw_circle(Vector2.ZERO, RADIUS, Color("#F2A81D"))
+	draw_circle(Vector2(-2.0, -2.2), RADIUS * 0.42, Color("#FFE9A8"))

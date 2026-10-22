@@ -23,12 +23,13 @@ var current_id := ""
 
 var level_label: Label
 var xp_label: Label
-var bar_fill: ColorRect
-var bar_back: ColorRect
+var bar_fill: Control
+var bar_back: Control
 var avatar: Control
 var tile_progress := {}      # game id -> Label
 var tile_buttons := {}       # game id -> Button
 var overlay: Control         # achievements / settings, null when closed
+var _tile_art := {}          # game id -> Texture2D
 
 
 func _ready() -> void:
@@ -57,6 +58,10 @@ func _label(parent: Node, text: String, font_size: int, color: Color, pos: Vecto
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)
 	l.add_theme_color_override("font_color", color)
+	if font_size >= 16:
+		l.add_theme_font_override("font", UIKit.heavy())
+		l.add_theme_color_override("font_outline_color", UIKit.INK)
+		l.add_theme_constant_override("outline_size", 5 if font_size >= 22 else 4)
 	l.position = pos
 	if width > 0.0:
 		l.horizontal_alignment = align as HorizontalAlignment
@@ -89,12 +94,7 @@ func _panel(parent: Node, rect: Rect2, fill: Color, border: Color, border_w: int
 	var p := Panel.new()
 	p.position = rect.position
 	p.size = rect.size
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = fill
-	sb.border_color = border
-	sb.set_border_width_all(border_w)
-	sb.set_corner_radius_all(14)
-	p.add_theme_stylebox_override("panel", sb)
+	p.add_theme_stylebox_override("panel", UIKit.box(fill, border, border_w, 14, 3 if border_w >= 3 else 0))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(p)
 	return p
@@ -105,20 +105,7 @@ func _button(parent: Node, text: String, rect: Rect2, bg: Color, fg: Color, font
 	b.text = text
 	b.position = rect.position
 	b.size = rect.size
-	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_size_override("font_size", font_size)
-	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
-		b.add_theme_color_override(c, fg)
-	b.add_theme_color_override("font_disabled_color", COL_MUTED)
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = bg
-		if state == "pressed":
-			sb.bg_color = bg.darkened(0.2)
-		if state == "disabled":
-			sb.bg_color = COL_PANEL
-		sb.set_corner_radius_all(12)
-		b.add_theme_stylebox_override(state, sb)
+	UIKit.style_button(b, bg, fg, font_size)
 	parent.add_child(b)
 	return b
 
@@ -132,38 +119,48 @@ func _build_home() -> void:
 	home.name = "Home"
 	home.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(home)
-	_rect(home, Rect2(0.0, 0.0, 390.0, 844.0), COL_BG)
+	_add_background(home)
 
 	# Profile bar: avatar, level, XP bar. Tapping it opens the achievements.
 	avatar = Control.new()
-	avatar.position = Vector2(16.0, 22.0)
-	avatar.size = Vector2(60.0, 60.0)
+	avatar.position = Vector2(16.0, 18.0)
+	avatar.size = Vector2(64.0, 64.0)
 	avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	avatar.draw.connect(_draw_avatar)
 	home.add_child(avatar)
-	level_label = _label(home, "", 22, COL_TEXT, Vector2(90.0, 22.0))
-	xp_label = _label(home, "", 13, COL_MUTED, Vector2(190.0, 29.0), 184.0, HORIZONTAL_ALIGNMENT_RIGHT)
-	bar_back = _rect(home, Rect2(90.0, 58.0, 284.0, 16.0), COL_LINE)
-	bar_fill = _rect(home, Rect2(90.0, 58.0, 0.0, 16.0), COL_ACCENT)
-	var profile_btn := _button(home, "", Rect2(10.0, 14.0, 370.0, 76.0), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
+	level_label = _label(home, "", 22, COL_TEXT, Vector2(92.0, 14.0))
+	xp_label = _label(home, "", 13, COL_MUTED, Vector2(190.0, 24.0), 184.0, HORIZONTAL_ALIGNMENT_RIGHT)
+	bar_back = Panel.new()
+	bar_back.position = Vector2(92.0, 52.0)
+	bar_back.size = Vector2(282.0, 26.0)
+	(bar_back as Panel).add_theme_stylebox_override("panel", UIKit.box(UIKit.INK_SOFT, UIKit.INK, 4, 13))
+	bar_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	home.add_child(bar_back)
+	bar_fill = Panel.new()
+	bar_fill.position = Vector2(96.0, 56.0)
+	bar_fill.size = Vector2(0.0, 18.0)
+	(bar_fill as Panel).add_theme_stylebox_override("panel", UIKit.box(COL_ACCENT, COL_ACCENT.darkened(0.35), 2, 9))
+	bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	home.add_child(bar_fill)
+	var profile_btn := _button(home, "", Rect2(10.0, 10.0, 370.0, 80.0), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
 	profile_btn.name = "ProfileButton"
-	for state in ["normal", "hover", "pressed"]:
+	for state in ["normal", "hover", "pressed", "disabled"]:
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(1.0, 1.0, 1.0, 0.06 if state == "pressed" else 0.0)
-		sb.set_corner_radius_all(12)
+		sb.set_corner_radius_all(14)
 		profile_btn.add_theme_stylebox_override(state, sb)
 	profile_btn.pressed.connect(show_achievements)
 
-	_label(home, Games.HUB_NAME.to_upper(), 30, COL_TEXT, Vector2(16.0, 106.0), 358.0)
-	_label(home, "No ads. No timers. No purchases.", 14, COL_ACCENT, Vector2(16.0, 146.0), 358.0)
+	_label(home, Games.HUB_NAME.to_upper(), 34, COL_TEXT, Vector2(16.0, 98.0), 358.0)
+	_label(home, "No ads. No timers. No purchases.", 14, COL_ACCENT, Vector2(16.0, 148.0), 358.0)
 
 	for i in Games.LIST.size():
 		_build_tile(i)
 
-	var settings_btn := _button(home, "SETTINGS", Rect2(16.0, 770.0, 171.0, 52.0), COL_PANEL, COL_TEXT)
+	var settings_btn := _button(home, "SETTINGS", Rect2(16.0, 768.0, 171.0, 56.0), UIKit.INK_SOFT, COL_TEXT)
 	settings_btn.name = "SettingsButton"
 	settings_btn.pressed.connect(show_settings)
-	var trophies_btn := _button(home, "ACHIEVEMENTS", Rect2(203.0, 770.0, 171.0, 52.0), COL_PANEL, COL_TEXT)
+	var trophies_btn := _button(home, "ACHIEVEMENTS", Rect2(203.0, 768.0, 171.0, 56.0), UIKit.INK_SOFT, COL_ACCENT, 17)
 	trophies_btn.name = "AchievementsButton"
 	trophies_btn.pressed.connect(show_achievements)
 
@@ -178,53 +175,84 @@ func _build_tile(i: int) -> void:
 	var g: Dictionary = Games.LIST[i]
 	var r := _tile_rect(i)
 	var playable := Games.is_playable(g)
+	var card := Control.new()
+	card.position = r.position
+	card.size = r.size
+	card.pivot_offset = r.size * 0.5
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.draw.connect(_draw_tile.bind(card, g))
+	home.add_child(card)
 	if playable:
-		_panel(home, r, g["bg"], COL_DARK, 4)
-		var pic := TextureRect.new()
-		pic.texture = load(str(g["art"]))
-		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		pic.position = r.position + Vector2(36.0, 14.0)
-		pic.size = Vector2(98.0, 98.0)
-		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		home.add_child(pic)
-		_label(home, str(g["title"]), 22, g["fg"], r.position + Vector2(0.0, 116.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
-		tile_progress[g["id"]] = _label(home, "", 12, COL_TEXT, r.position + Vector2(4.0, 144.0), r.size.x - 8.0, HORIZONTAL_ALIGNMENT_CENTER)
-		var btn := _button(home, "", r, Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
+		_label(card, str(g["title"]), 22, g["fg"], Vector2(0.0, 116.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
+		tile_progress[g["id"]] = _label(card, "", 12, COL_TEXT, Vector2(4.0, 146.0), r.size.x - 8.0, HORIZONTAL_ALIGNMENT_CENTER)
+		var btn := _button(card, "", Rect2(Vector2.ZERO, r.size), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
 		btn.name = "Tile_" + str(g["id"])
-		for state in ["normal", "hover", "pressed"]:
+		for state in ["normal", "hover", "pressed", "disabled"]:
 			var sb := StyleBoxFlat.new()
-			sb.bg_color = Color(1.0, 1.0, 1.0, 0.10 if state == "pressed" else 0.0)
-			sb.set_corner_radius_all(14)
+			sb.bg_color = Color(1.0, 1.0, 1.0, 0.12 if state == "pressed" else 0.0)
+			sb.set_corner_radius_all(18)
 			btn.add_theme_stylebox_override(state, sb)
 		btn.pressed.connect(open_game.bind(str(g["id"])))
 		tile_buttons[g["id"]] = btn
+		# The playable tile breathes gently so it reads as the thing to tap
+		var tw := create_tween().set_loops()
+		tw.tween_property(card, "scale", Vector2.ONE * 1.03, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(card, "scale", Vector2.ONE, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	elif str(g["id"]) != "":
+		_label(card, str(g["title"]), 18, COL_MUTED, Vector2(0.0, 98.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
+		_label(card, str(g["tagline"]), 13, COL_MUTED, Vector2(0.0, 128.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
+
+
+func _draw_tile(card: Control, g: Dictionary) -> void:
+	var rect := Rect2(Vector2.ZERO, card.size)
+	if Games.is_playable(g):
+		UIKit.panel(card, rect, g["bg"], UIKit.INK, 5, 20, 5)
+		for p in [Vector2(24.0, 24.0), Vector2(146.0, 30.0), Vector2(20.0, 100.0), Vector2(150.0, 96.0)]:
+			UIKit.paw(card, p, 7.0, Color(0.0, 0.0, 0.0, 0.18))
+		UIKit.panel(card, Rect2(35.0, 12.0, 101.0, 98.0), UIKit.CRIMSON_DARK, g["fg"], 4, 14)
+		if not _tile_art.has(g["id"]):
+			_tile_art[g["id"]] = load(str(g["art"]))
+		card.draw_texture_rect(_tile_art[g["id"]], Rect2(40.0, 17.0, 91.0, 88.0), false)
 	else:
-		_panel(home, r, COL_PANEL, COL_LINE, 2)
-		var named: bool = str(g["id"]) != ""
-		if named:
-			_label(home, str(g["title"]), 20, COL_MUTED, r.position + Vector2(0.0, 52.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
-			_label(home, str(g["tagline"]), 13, COL_MUTED, r.position + Vector2(0.0, 84.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
-		else:
-			_label(home, "???", 40, COL_LINE, r.position + Vector2(0.0, 58.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.panel(card, rect, Color("#1B2034"), UIKit.INK, 4, 20, 4)
+		UIKit.lock(card, Vector2(card.size.x * 0.5, 48.0 if str(g["id"]) != "" else 62.0), 15.0, Color("#3A4160"))
 
 
 func _draw_avatar() -> void:
-	var c := Vector2(30.0, 30.0)
-	avatar.draw_circle(c, 30.0, COL_ACCENT)
-	avatar.draw_circle(c, 26.0, COL_BG)
+	var c := Vector2(32.0, 32.0)
+	avatar.draw_circle(c, 32.0, UIKit.INK)
+	avatar.draw_circle(c, 28.0, COL_ACCENT)
+	avatar.draw_circle(c, 23.0, UIKit.INK_SOFT)
 	var info := Profile.level_info(Profile.xp(Save.section("profile")))
-	var font := ThemeDB.fallback_font
-	avatar.draw_string(font, Vector2(0.0, 38.0), str(info["level"]), HORIZONTAL_ALIGNMENT_CENTER, 60.0, 24, COL_TEXT)
+	UIKit.text(avatar, Vector2(0.0, 41.0), str(info["level"]), 26, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER, 64.0)
 
 
-# Re-reads the save and updates everything on the home screen.
+func _add_background(parent: Control) -> void:
+	var bg := Control.new()
+	bg.size = Vector2(390.0, 844.0)
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	bg.draw.connect(func():
+		UIKit.gradient(bg, Rect2(0.0, 0.0, 390.0, 844.0), Color("#1D2340"), Color("#0C0F1D"))
+		var y := 8.0
+		var row := 0
+		while y < 844.0:
+			var x := 8.0 + (13.0 if row % 2 == 1 else 0.0)
+			while x < 390.0:
+				bg.draw_circle(Vector2(x, y), 1.6, Color(1.0, 1.0, 1.0, 0.045))
+				x += 26.0
+			y += 26.0
+			row += 1)
+	parent.add_child(bg)
+
+
 func refresh() -> void:
 	var prof := Save.section("profile")
 	var info := Profile.level_info(Profile.xp(prof))
 	level_label.text = "LEVEL %d" % int(info["level"])
 	xp_label.text = "%d / %d XP" % [int(info["into"]), int(info["need"])]
-	bar_fill.size.x = bar_back.size.x * float(info["into"]) / float(info["need"])
+	var fill_w: float = (bar_back.size.x - 8.0) * float(info["into"]) / float(info["need"])
+	bar_fill.visible = fill_w > 0.5
+	bar_fill.size.x = maxf(fill_w, 18.0)
 	avatar.queue_redraw()
 	for g in Games.LIST:
 		if tile_progress.has(g["id"]):
@@ -291,18 +319,17 @@ func _on_finished(result: Dictionary) -> void:
 
 func toast(text: String) -> void:
 	var p := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = COL_PANEL
-	sb.border_color = COL_ACCENT
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(12)
-	sb.set_content_margin_all(10.0)
+	var sb: StyleBoxFlat = UIKit.box(COL_PANEL, COL_ACCENT, 4, 14, 3).duplicate()
+	sb.set_content_margin_all(12.0)
 	p.add_theme_stylebox_override("panel", sb)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", 16)
+	l.add_theme_font_size_override("font_size", 17)
+	l.add_theme_font_override("font", UIKit.heavy())
 	l.add_theme_color_override("font_color", COL_TEXT)
+	l.add_theme_color_override("font_outline_color", UIKit.INK)
+	l.add_theme_constant_override("outline_size", 4)
 	p.add_child(l)
 	toast_box.add_child(p)
 	if is_inside_tree():
@@ -322,8 +349,7 @@ func _open_overlay(title: String) -> Control:
 	overlay.name = "Overlay"
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	home.add_child(overlay)
-	var back := _rect(overlay, Rect2(0.0, 0.0, 390.0, 844.0), COL_BG)
-	back.mouse_filter = Control.MOUSE_FILTER_STOP
+	_add_background(overlay)
 	_label(overlay, title, 30, COL_TEXT, Vector2(16.0, 24.0), 358.0)
 	var close := _button(overlay, "BACK", Rect2(16.0, 770.0, 358.0, 52.0), COL_ACCENT, COL_DARK, 20)
 	close.name = "CloseButton"

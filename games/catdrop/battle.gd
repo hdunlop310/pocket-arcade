@@ -10,6 +10,7 @@ signal wave_cleared(wave: int)
 signal run_failed
 signal run_won
 signal changed
+signal shake(amount: float)
 
 # --- Layout (matches the 390 x 844 viewport) ---------------------------------
 const FIELD := Rect2(16.0, 130.0, 358.0, 590.0)
@@ -21,6 +22,7 @@ const STEP := Vector2(86.0, 72.0)
 const GRID_BOTTOM := 710.0
 const SPAWN_Y := 168.0
 const STOP_GAP := 16.0
+const BLOCK_OFFSET := 48.0          # a mouse stops this far above the centre of the cat blocking its lane
 
 # Tile type per grid index (row * 4 + column).
 const TILE_TYPES := [
@@ -46,6 +48,11 @@ const CAT_TYPES := {
 	"macho": {"name": "MACHO", "role": "MELEE", "kind": "melee", "hp": 150.0, "dmg": 14.0, "interval": 0.7, "reach": 86.0, "cost": 40.0},
 	"rosette": {"name": "ROSETTE", "role": "RANGED", "kind": "ranged", "hp": 50.0, "dmg": 34.0, "interval": 1.5, "range": 300.0, "cost": 60.0},
 }
+# Melee cats leave their tile to meet mice in their own lane, then come home when it is clear.
+const CHARGE_SPEED := 150.0         # px/s, out and back
+const CHARGE_LEASH := 130.0         # furthest a melee cat will run from its tile
+const CHARGE_GAP := 52.0            # it stops this far below the mouse it is fighting
+const CHARGE_REACH := 80.0          # a mouse this far beyond the leash is still worth running to
 const COST_GROWTH := 1.35
 const MAX_CAT_LEVEL := 5
 const LEVEL_STAT_STEP := 0.2        # each cat level adds this much to health and damage (level 1 = x1.0)
@@ -94,6 +101,7 @@ var banner_t := 0.0
 
 var rng := RandomNumberGenerator.new()
 var textures := {}
+var fx := Fx.new()
 
 
 func _ready() -> void:
@@ -274,7 +282,7 @@ func start_wave() -> bool:
 		else:
 			var key: String = grid[i]
 			var hp: float = float(CAT_TYPES[key]["hp"]) * level_mult(key)
-			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true})
+			cats.append({"key": key, "hp": hp, "max": hp, "cd": 0.4, "alive": true, "y": tile_center(i).y})
 	enemies.clear()
 	tracers.clear()
 	floaters.clear()
@@ -333,17 +341,54 @@ func cat_range(i: int) -> float:
 
 
 func _front_cat(col: int) -> int:
-	# Index of the top-most living cat in a column, or -1.
+	# Index of the living cat furthest up a column (so a charging cat blocks before the ones behind it), or -1.
+	var best := -1
+	var best_y := INF
 	for r in ROWS:
 		var i := r * COLS + col
-		if cats[i] != null and cats[i]["alive"]:
-			return i
-	return -1
+		if cats[i] != null and cats[i]["alive"] and float(cats[i]["y"]) < best_y:
+			best = i
+			best_y = float(cats[i]["y"])
+	return best
+
+
+func cat_pos(i: int) -> Vector2:
+	# Where a cat is right now: its tile, or further up its lane while charging.
+	var home := tile_center(i)
+	if cats.size() == COLS * ROWS and cats[i] != null:
+		return Vector2(home.x, float(cats[i]["y"]))
+	return home
+
+
+func is_charging(i: int) -> bool:
+	return active and cats.size() == COLS * ROWS and cats[i] != null and cats[i]["alive"] and tile_center(i).y - float(cats[i]["y"]) > 6.0
+
+
+func _cat_damage_mult(i: int) -> float:
+	# The tile bonuses only apply while the cat is standing on its tile.
+	return 1.0 if is_charging(i) else _tile_damage_mult(i)
+
+
+func _charge_target(i: int) -> Dictionary:
+	# The mouse furthest down this cat's lane that is worth running out to, or {}.
+	var home := tile_center(i)
+	var best: Dictionary = {}
+	var best_y := -1.0
+	for e in enemies:
+		if e["dead"] or absf(float(e["x"]) - home.x) >= 48.0:
+			continue
+		var ey := float(e["y"])
+		if ey > home.y + 10.0 or ey < home.y - CHARGE_LEASH - CHARGE_REACH:
+			continue
+		if ey > best_y:
+			best = e
+			best_y = ey
+	return best
 
 
 func _find_target(i: int) -> Dictionary:
 	var cat: Dictionary = cats[i]
-	var center := tile_center(i)
+	var center := cat_pos(i)
 	var best: Dictionary = {}
 	var best_y := -1.0
 	var kind: String = CAT_TYPES[cat["key"]]["kind"]
@@ -385,19 +430,34 @@ func step(dt: float) -> void:
 		var front := _front_cat(int(col))
 		var limit := GRID_BOTTOM + 6.0
 		if front >= 0:
-			limit = tile_rect(front).position.y - STOP_GAP
+			limit = float(cats[front]["y"]) - BLOCK_OFFSET
 		for idx in list.size():
 			var e: Dictionary = list[idx]
 			var lim := limit if idx == 0 else float(list[idx - 1]["y"]) - 20.0
 			e["y"] = minf(float(e["y"]) + float(e["speed"]) * dt, lim)
 			if idx == 0 and float(e["y"]) >= limit - 0.5:
 				if front >= 0:
-					cats[front]["hp"] = float(cats[front]["hp"]) - float(e["dps"]) * dt * _tile_damage_mult(front)
+					cats[front]["hp"] = float(cats[front]["hp"]) - float(e["dps"]) * dt * _cat_damage_mult(front)
 					if float(cats[front]["hp"]) <= 0.0:
 						cats[front]["alive"] = false
+						fx.burst(cat_pos(front), COL_AMBER, 12, 150.0, 0.6, 3.5, 250.0)
+						shake.emit(2.0)
 				else:
 					house_hp -= float(e["house"])
+					fx.burst(Vector2(float(e["x"]), GRID_BOTTOM + 8.0), COL_PEG, 10, 160.0, 0.5, 3.5, 200.0)
+					shake.emit(4.0 if e["kind"] == "boss" else 2.5)
 					e["dead"] = true
+
+	# Melee cats run out to meet mice in their lane and come home when it is clear
+	for i in COLS * ROWS:
+		if cats[i] == null or not cats[i]["alive"] or CAT_TYPES[cats[i]["key"]]["kind"] != "melee":
+			continue
+		var home_y := tile_center(i).y
+		var want := home_y
+		var target := _charge_target(i)
+		if not target.is_empty():
+			want = clampf(float(target["y"]) + CHARGE_GAP, home_y - CHARGE_LEASH, home_y)
+		cats[i]["y"] = move_toward(float(cats[i]["y"]), want, CHARGE_SPEED * dt)
 
 	# Cats attack
 	for i in COLS * ROWS:
@@ -414,11 +474,15 @@ func step(dt: float) -> void:
 		var dmg: float = float(def["dmg"]) * level_mult(cat["key"])
 		target["hp"] = float(target["hp"]) - dmg
 		cat["cd"] = float(def["interval"])
-		var from := tile_center(i)
+		var from := cat_pos(i)
 		tracers.append({"from": from, "to": Vector2(float(target["x"]), float(target["y"])), "t": 0.12, "melee": def["kind"] == "melee"})
 		floaters.append({"pos": Vector2(float(target["x"]), float(target["y"]) - 14.0), "text": str(int(dmg)), "t": 0.6})
+		fx.burst(Vector2(float(target["x"]), float(target["y"])), Color(1.0, 1.0, 1.0), 3, 90.0, 0.2, 2.0, 0.0)
 		if float(target["hp"]) <= 0.0:
 			target["dead"] = true
+			fx.burst(Vector2(float(target["x"]), float(target["y"])), COL_MOUSE if target["kind"] != "boss" else COL_PEG, 8 if target["kind"] != "boss" else 30, 130.0 if target["kind"] != "boss" else 220.0, 0.5, 3.0, 260.0)
+			if target["kind"] == "boss":
+				shake.emit(9.0)
 
 	# Clean up
 	var alive_enemies: Array = []
@@ -441,6 +505,7 @@ func _fail() -> void:
 	banner = "THE HOUSE FELL\nBack to wave 1. Your cats and upgrades stay."
 	banner_t = 4.0
 	run_failed.emit()
+	shake.emit(8.0)
 	changed.emit()
 
 
@@ -475,6 +540,7 @@ func set_banner_detail(text: String) -> void:
 func _process(delta: float) -> void:
 	if banner_t > 0.0:
 		banner_t -= delta
+	fx.update(delta)
 	for t in tracers:
 		t["t"] = float(t["t"]) - delta
 	tracers = tracers.filter(func(t): return float(t["t"]) > 0.0)
@@ -528,20 +594,33 @@ func _draw_portrait(key: String, rect: Rect2, peek: bool) -> void:
 		draw_texture_rect(tex, rect, false)
 
 
+func _draw_hp_bar(rect: Rect2, frac: float, good: Color = Color("#6BD66B")) -> void:
+	draw_rect(rect.grow(2.0), UIKit.INK)
+	draw_rect(rect, Color("#2A2A34"))
+	draw_rect(Rect2(rect.position, Vector2(rect.size.x * clampf(frac, 0.0, 1.0), rect.size.y)), good if frac > 0.4 else COL_PEG)
+
+
+func _draw_cat_card(key: String, rect: Rect2, dead: bool) -> void:
+	UIKit.panel(self, rect.grow(3.0), UIKit.CRIMSON, UIKit.AMBER if not dead else UIKit.GRAY, 3, 9)
+	_draw_portrait(key, rect, false)
+	if dead:
+		draw_rect(rect, Color(0.0, 0.0, 0.0, 0.6))
+
+
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	draw_rect(FIELD, COL_FIELD)
+	UIKit.panel(self, FIELD.grow(5.0), UIKit.INK, UIKit.INK, 5, 14)
+	UIKit.gradient(self, FIELD, Color("#1B1B25"), Color("#0C0C11"))
 
 	# Lane guides
 	for c in COLS:
 		var x := column_x(c)
-		draw_dashed_line(Vector2(x, 150.0), Vector2(x, GRID_ORIGIN.y - 6.0), Color(1.0, 1.0, 1.0, 0.06), 2.0, 8.0)
+		draw_dashed_line(Vector2(x, 176.0), Vector2(x, GRID_ORIGIN.y - 6.0), Color(1.0, 1.0, 1.0, 0.07), 2.0, 8.0)
 
 	# House bar
-	draw_string(font, Vector2(26.0, 156.0), "HOUSE", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, COL_TEXT)
-	draw_rect(Rect2(90.0, 144.0, 232.0, 12.0), COL_GRAY)
-	draw_rect(Rect2(90.0, 144.0, 232.0 * clampf(house_hp / HOUSE_MAX, 0.0, 1.0), 12.0), COL_PEG)
-	draw_string(font, Vector2(330.0, 156.0), str(int(maxf(house_hp, 0.0))), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, COL_TEXT)
+	UIKit.text(self, Vector2(26.0, 158.0), "HOUSE", 14, UIKit.CREAM, UIKit.INK, 4)
+	_draw_hp_bar(Rect2(92.0, 144.0, 226.0, 14.0), house_hp / HOUSE_MAX, COL_PEG)
+	UIKit.text(self, Vector2(326.0, 158.0), str(int(maxf(house_hp, 0.0))), 14, UIKit.CREAM, UIKit.INK, 4)
 
 	# Tiles and cats
 	for i in COLS * ROWS:
@@ -551,32 +630,38 @@ func _draw() -> void:
 		var key: String = grid[i]
 		match kind:
 			"flat":
-				draw_rect(r, COL_TILE)
-				draw_rect(r, COL_GRAY, false, 2.0)
+				UIKit.panel(self, r, Color("#22222C"), UIKit.INK, 3, 10)
 			"raised":
-				draw_rect(Rect2(r.position.x, r.position.y, r.size.x, r.size.y), Color("#4A4A58"))
-				draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 4.0), Color("#8A8A98"))
-				draw_rect(Rect2(r.position.x, r.end.y - 12.0, r.size.x, 12.0), COL_EDGE)
+				UIKit.panel(self, r, Color("#5A5A6C"), UIKit.INK, 3, 10, 8)
+				draw_rect(Rect2(r.position.x + 5.0, r.position.y + 4.0, r.size.x - 10.0, 4.0), Color("#9A9AAE"))
 			"hole":
-				draw_rect(r, Color("#1B1B23"))
-				draw_rect(r, COL_GRAY, false, 2.0)
-				draw_rect(Rect2(r.position.x + 8.0, r.position.y + 10.0, r.size.x - 16.0, r.size.y - 16.0), Color.BLACK)
-		if key != "":
+				UIKit.panel(self, r, Color("#16161C"), UIKit.INK, 3, 10)
+				draw_rect(Rect2(r.position.x + 9.0, r.position.y + 11.0, r.size.x - 18.0, r.size.y - 20.0), Color.BLACK)
+		if key != "" and is_charging(i):
+			draw_rect(r.grow(-6.0), Color(1.0, 1.0, 1.0, 0.05), false, 2.0)
+		elif key != "":
 			var dead: bool = cat != null and not cat["alive"]
-			var pr := Rect2(r.position.x + (r.size.x - 44.0) * 0.5, r.position.y + (2.0 if kind == "raised" else 6.0), 44.0, 44.0)
+			var pr := Rect2(r.position.x + (r.size.x - 40.0) * 0.5, r.position.y + (2.0 if kind == "raised" else 7.0), 40.0, 40.0)
 			if kind == "hole":
 				var peek := Rect2(r.position.x + 18.0, r.position.y + 24.0, r.size.x - 36.0, 36.0)
 				_draw_portrait(key, peek, true)
 				draw_rect(Rect2(peek.position.x, peek.position.y, peek.size.x, peek.size.y * 0.5), Color(0.0, 0.0, 0.0, 0.18))
 			else:
-				draw_rect(pr.grow(2.0), COL_AMBER if not dead else COL_GRAY)
-				_draw_portrait(key, pr, false)
-				if dead:
-					draw_rect(pr, Color(0.0, 0.0, 0.0, 0.6))
+				_draw_cat_card(key, pr, dead)
 			if cat != null and not dead:
 				var frac := clampf(float(cat["hp"]) / float(cat["max"]), 0.0, 1.0)
-				draw_rect(Rect2(r.position.x + 6.0, r.end.y - (13.0 if kind == "raised" else 8.0), r.size.x - 12.0, 5.0), COL_EDGE)
-				draw_rect(Rect2(r.position.x + 6.0, r.end.y - (13.0 if kind == "raised" else 8.0), (r.size.x - 12.0) * frac, 5.0), Color("#6BD66B") if frac > 0.4 else COL_PEG)
+				_draw_hp_bar(Rect2(r.position.x + 8.0, r.end.y - (15.0 if kind == "raised" else 9.0), r.size.x - 16.0, 5.0), frac)
+
+	# Cats that have run out of their tile
+	for i in COLS * ROWS:
+		if is_charging(i):
+			var cp := cat_pos(i)
+			var ckey: String = grid[i]
+			var cr := Rect2(cp.x - 20.0, cp.y - 20.0, 40.0, 40.0)
+			draw_circle(cp + Vector2(0.0, 24.0), 16.0, Color(0.0, 0.0, 0.0, 0.3))
+			_draw_cat_card(ckey, cr, false)
+			var cfrac := clampf(float(cats[i]["hp"]) / float(cats[i]["max"]), 0.0, 1.0)
+			_draw_hp_bar(Rect2(cp.x - 20.0, cp.y + 26.0, 40.0, 5.0), cfrac)
 
 	# Enemies
 	for e in enemies:
@@ -585,11 +670,12 @@ func _draw() -> void:
 	# Attacks and damage numbers
 	for t in tracers:
 		var a := float(t["t"]) / 0.12
-		draw_line(Vector2(t["from"]), Vector2(t["to"]), Color(COL_AMBER, a), 3.0 if t["melee"] else 2.0)
+		draw_line(Vector2(t["from"]), Vector2(t["to"]), Color(UIKit.INK, a), 7.0 if t["melee"] else 5.0)
+		draw_line(Vector2(t["from"]), Vector2(t["to"]), Color(COL_AMBER, a), 4.0 if t["melee"] else 2.5)
+	fx.draw(self)
 	for f in floaters:
-		draw_string(font, Vector2(f["pos"]), str(f["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(COL_TEXT, clampf(float(f["t"]) / 0.6, 0.0, 1.0)))
-
-	draw_rect(FIELD.grow(3.0), COL_EDGE, false, 6.0)
+		var fa := clampf(float(f["t"]) / 0.6, 0.0, 1.0)
+		UIKit.text(self, Vector2(f["pos"]), str(f["text"]), 18, Color(UIKit.CREAM, fa), Color(UIKit.INK, fa), 5)
 
 	# Tray (placement) while no wave is running
 	if not active:
@@ -597,11 +683,10 @@ func _draw() -> void:
 			var key: String = CAT_ORDER[s]
 			var cr := _chip_rect(s)
 			var sel := selected == key
-			draw_rect(cr, Color("#2A2A34") if sel else COL_TILE)
-			draw_rect(cr, COL_AMBER if sel else COL_GRAY, false, 3.0 if sel else 2.0)
-			_draw_portrait(key, Rect2(cr.position.x + 6.0, cr.position.y + 6.0, 32.0, 32.0), false)
-			draw_string(font, Vector2(cr.position.x + 46.0, cr.position.y + 20.0), str(CAT_TYPES[key]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, COL_TEXT)
-			draw_string(font, Vector2(cr.position.x + 46.0, cr.position.y + 37.0), "%d spare" % spare(key), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, COL_AMBER if spare(key) > 0 else COL_MUTED)
+			UIKit.panel(self, cr, Color("#3A2A12") if sel else UIKit.INK_SOFT, UIKit.AMBER if sel else UIKit.INK, 3, 10, 3)
+			_draw_portrait(key, Rect2(cr.position.x + 6.0, cr.position.y + 6.0, 30.0, 30.0), false)
+			UIKit.text(self, Vector2(cr.position.x + 44.0, cr.position.y + 20.0), str(CAT_TYPES[key]["name"]), 15, UIKit.CREAM, UIKit.INK, 4)
+			draw_string(font, Vector2(cr.position.x + 44.0, cr.position.y + 37.0), "%d spare" % spare(key), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, COL_AMBER if spare(key) > 0 else COL_MUTED)
 		var hint := "Tap a cat above, then a tile. Tap a placed cat to pick it up."
 		draw_string(font, Vector2(FIELD.position.x, 246.0), hint, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, 12, COL_MUTED)
 		draw_string(font, Vector2(FIELD.position.x, 264.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, 11, COL_MUTED)
@@ -609,36 +694,52 @@ func _draw() -> void:
 	# Result banner
 	if banner_t > 0.0 and banner != "":
 		var lines := banner.split("\n")
-		draw_rect(Rect2(FIELD.position.x + 14.0, 300.0, FIELD.size.x - 28.0, 40.0 + 22.0 * float(lines.size())), Color(0.043, 0.043, 0.055, 0.92))
+		UIKit.panel(self, Rect2(FIELD.position.x + 14.0, 296.0, FIELD.size.x - 28.0, 46.0 + 22.0 * float(lines.size())), Color(UIKit.INK_SOFT, 0.96), UIKit.AMBER, 4, 16, 3)
 		for n in lines.size():
-			var size := 34 if n == 0 else 14
-			var col := COL_AMBER if n == 0 else COL_TEXT
-			draw_string(font, Vector2(FIELD.position.x, 336.0 + (0.0 if n == 0 else 24.0 + 20.0 * float(n - 1))), lines[n], HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, size, col)
+			var size := 32 if n == 0 else 14
+			var col := UIKit.AMBER if n == 0 else UIKit.CREAM
+			UIKit.text(self, Vector2(FIELD.position.x, 336.0 + (0.0 if n == 0 else 24.0 + 20.0 * float(n - 1))), lines[n], size, col, UIKit.INK, 7 if n == 0 else 4, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x)
 
 
 func _draw_enemy(e: Dictionary) -> void:
 	var p := Vector2(float(e["x"]), float(e["y"]))
 	var boss: bool = e["kind"] == "boss"
 	var s := 1.9 if boss else 1.0
-	var body := Color("#6B3A3A") if boss else COL_MOUSE
+	var body := Color("#7A3B3B") if boss else COL_MOUSE
+	var wob := sin(float(e["y"]) * 0.35) * 1.2 * s
+	# ground shadow
+	draw_circle(p + Vector2(0.0, 11.0 * s), 9.0 * s, Color(0.0, 0.0, 0.0, 0.25))
 	# tail
-	draw_line(p + Vector2(0.0, -10.0) * s, p + Vector2(8.0, -22.0) * s, body.darkened(0.2), 2.0 * s)
+	var tail := PackedVector2Array([p + Vector2(0.0, -8.0) * s, p + Vector2(7.0 + wob, -17.0) * s, p + Vector2(3.0, -26.0) * s])
+	draw_polyline(tail, UIKit.INK, 4.5 * s, true)
+	draw_polyline(tail, Color("#D58A9B"), 2.2 * s, true)
 	# ears
-	draw_circle(p + Vector2(-7.0, 6.0) * s, 4.5 * s, body.lightened(0.15))
-	draw_circle(p + Vector2(7.0, 6.0) * s, 4.5 * s, body.lightened(0.15))
+	for sx in [-1.0, 1.0]:
+		draw_circle(p + Vector2(sx * 8.0, 5.0) * s, 6.0 * s, UIKit.INK)
+		draw_circle(p + Vector2(sx * 8.0, 5.0) * s, 4.2 * s, body.lightened(0.1))
+		draw_circle(p + Vector2(sx * 8.0, 5.0) * s, 2.4 * s, Color("#E7A1B3"))
 	# body
-	draw_circle(p, 11.0 * s, COL_EDGE)
-	draw_circle(p, 9.5 * s, body)
-	# nose and eyes
-	draw_circle(p + Vector2(0.0, 8.0) * s, 2.2 * s, COL_PEG)
-	draw_circle(p + Vector2(-4.0, 3.0) * s, 1.8 * s, Color("#FFE066"))
-	draw_circle(p + Vector2(4.0, 3.0) * s, 1.8 * s, Color("#FFE066"))
+	draw_circle(p, 12.0 * s, UIKit.INK)
+	draw_circle(p, 9.6 * s, body)
+	draw_circle(p + Vector2(-2.5, -3.0) * s, 3.0 * s, body.lightened(0.18))
+	# nose, whiskers, angry eyes
+	draw_circle(p + Vector2(0.0, 8.0) * s, 2.4 * s, COL_PEG)
+	for sx in [-1.0, 1.0]:
+		draw_line(p + Vector2(sx * 3.0, 8.0) * s, p + Vector2(sx * 11.0, 9.0 + wob) * s, UIKit.INK, 1.4 * s)
+		draw_circle(p + Vector2(sx * 4.0, 3.0) * s, 2.4 * s, Color("#FFE066"))
+		draw_circle(p + Vector2(sx * 4.0, 3.4) * s, 1.0 * s, UIKit.INK)
+		draw_line(p + Vector2(sx * 1.0, 0.0) * s, p + Vector2(sx * 7.0, 1.6) * s, UIKit.INK, 1.8 * s)
 	if boss:
-		draw_colored_polygon(PackedVector2Array([
-			p + Vector2(-9.0, -10.0) * s, p + Vector2(-9.0, -18.0) * s, p + Vector2(-4.0, -13.0) * s,
-			p + Vector2(0.0, -20.0) * s, p + Vector2(4.0, -13.0) * s, p + Vector2(9.0, -18.0) * s, p + Vector2(9.0, -10.0) * s,
-		]), COL_AMBER)
+		var cr := PackedVector2Array([
+			p + Vector2(-9.0, -9.0) * s, p + Vector2(-9.0, -18.0) * s, p + Vector2(-4.0, -13.0) * s,
+			p + Vector2(0.0, -21.0) * s, p + Vector2(4.0, -13.0) * s, p + Vector2(9.0, -18.0) * s, p + Vector2(9.0, -9.0) * s,
+		])
+		var cr_out: PackedVector2Array = cr.duplicate()
+		cr_out.append(cr[0])
+		draw_colored_polygon(cr, COL_AMBER)
+		draw_polyline(cr_out, UIKit.INK, 2.5, true)
 	var frac := clampf(float(e["hp"]) / float(e["max"]), 0.0, 1.0)
 	var bw := 26.0 * s
-	draw_rect(Rect2(p.x - bw * 0.5, p.y - 16.0 * s - 6.0, bw, 4.0), COL_EDGE)
-	draw_rect(Rect2(p.x - bw * 0.5, p.y - 16.0 * s - 6.0, bw * frac, 4.0), COL_PEG)
+	_draw_hp_bar(Rect2(p.x - bw * 0.5, p.y - 17.0 * s - 8.0, bw, 4.0), frac, COL_PEG)
+
+

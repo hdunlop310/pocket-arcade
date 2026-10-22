@@ -11,6 +11,8 @@ Drop balls through a peg board with multiplier gates (X2/X3/X5) into a cup, and 
 - Cats are placed on a grid, not freely. Tile types matter: flat, raised (ranged cats +range, any cat takes +50% damage), hole (any cat takes -50% damage, ranged cats lose range). The layout is `TILE_TYPES` in `battle.gd`.
 - Coins are the single currency. Cats, cat levels and board upgrades all cost coins. All upgrading happens on the map (story) screen, in the style of the owner's reference games (a chapter path with the next node highlighted, upgrade cards below, one big play button); there is no separate shop panel.
 - Art style: edgy cartoon. Thick black outlines, flat fills, grungy texture, spiked collars, grumpy faces, amber eyes. Palette: crimson background `#7E1236`, near-black `#0B0B0E` / `#16161C`, amber `#F2A81D` for buttons and eyes, pink-red `#E0285E` for pegs and highlights. Reference art: the Maine Coon (Macho) and Bengal (Rosette) illustrations in `art/` come from the owner's own AI-generated reference images.
+- Melee cats (Macho) run out of their tile to meet mice in their own lane, within a leash (`CHARGE_*` in `battle.gd`), block mice up front, and return home when the lane is clear (owner decision 2026-10-22). Tile bonuses only apply while a cat stands on its tile.
+- UI direction (owner, 2026-10-22): the first look was "bland and boring". Aim for chunky, outlined, juicy: thick ink outlines, heavy text, raised buttons, particles, popups, screen shake. Art plan is hybrid: UI chrome is drawn in code now; real cat and mouse sprites will be supplied later and dropped in.
 - Two cats exist so far: Macho (Maine Coon, melee, tank) and Rosette (Bengal, ranged sniper). More cats are wanted.
 - Do not copy other games' characters, art or branding. Mechanics are fair game, assets are not.
 
@@ -27,6 +29,7 @@ Cat Drop is game #1 of a planned app that collects the classic ad-riddled hybrid
 
 ## Files
 - `hub/hub.gd` (+ `hub.tscn`, the main scene): game picker, profile bar, achievements and settings overlays, toasts. Opens games with `open_game(id)` and listens to their `GameBase` signals.
+- `core/ui_kit.gd` (`UIKit`): the shared look. Heavy outlined font (`UIKit.heavy()`), `style_button`, outlined `box`/`panel`, `text`, `gradient`, and drawn icons (star, coin, lock, paw, crown, arrow). Use it for all new UI instead of raw StyleBoxFlat or plain `draw_string`. `core/fx.gd` (`Fx`): particle bursts and floating popups; the owner calls `update(dt)` and `draw(ci)`.
 - `core/`: `game_base.gd` (common interface: `start(slot)`, signals `progress`, `finished`, `quit_requested`, `save_requested`), `save.gd` (autoload `Save`), `games.gd` (registry and tile progress text), `profile.gd` (XP to level, awarding), `achievements.gd` (definitions).
 - `games/catdrop/catdrop.gd`: the map screen and upgrade panel, the drop board (physics, balls, gates, cup), the map/drop/battle state machine (`state`), HUD, and saving into its slot. Everything is drawn in code in `_draw()`. It reports XP and achievements to the hub through `progress`.
 - `games/catdrop/battle.gd`: the battle grid. All fight maths is in `step(dt)` and has no dependency on rendering, so tests can run it thousands of times. Also placement, ownership, cat costs, banners.
@@ -53,6 +56,8 @@ If you add a feature, add checks for it to `tests/test_game.gd`. If you change e
 - Cat costs: Macho 40, Rosette 60, each extra copy x1.35. Cat levels (new): 1 to 5, +20% health and damage per level, level-up cost = base cost x 2 x 1.7^(level-1) (Macho 80, 136, 231, 393). Level 1 is x1.0, so the roster numbers above are unchanged; the sweep does not yet use levels.
 
 ## Gotchas learned the hard way
+- Never move a node that has physics bodies as children to shake the screen (it freezes the balls). Shake through `get_viewport().canvas_transform` (see `kick()` in `catdrop.gd`).
+- A typed `var x := arr.duplicate()` on a packed array can fail to infer; write `var x: PackedVector2Array = ...`.
 - Setting a `Label.size` before `add_child` is overwritten with the text width; set it after (see `_label` in `hub.gd`). Enable autowrap before turning off `clip_text`.
 - In headless tests, awaiting only `physics_frame` can skip `_process`; the `frames()` helpers await both.
 - GDScript cannot infer a type from a Variant. `var x := some_dict["key"]` or `var busy := dropping or battle.active` fails to parse and stops the whole game loading. Write `var x: int = ...` or `var busy: bool = ...` whenever any part of the expression is untyped. Run the headless test after every edit to catch this.
