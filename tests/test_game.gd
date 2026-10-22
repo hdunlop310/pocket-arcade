@@ -206,7 +206,8 @@ func _ready() -> void:
 	for i in 16:
 		bt.grid[i] = ""
 	bt.grid[8] = "macho"
-	bt.wave = 1
+	bt.wave = 2
+	bt.rng.seed = 7   # fixed so the lanes the mice pick are the same every run
 	bt.start_wave()
 	var home: Vector2 = bt.tile_center(8)
 	var max_dist := 0.0
@@ -231,7 +232,7 @@ func _ready() -> void:
 	check("there is no leash: he runs well past the old 130px limit", max_dist > 160.0)
 	check("he goes to mice in other lanes, not just his own", max_side > 60.0)
 	check("a mouse he has hold of stops advancing", held_seen and held_still)
-	check("Macho alone clears wave 1 by fighting mice up the field", bt.house_hp > 0.0 and bt.wave == 2)
+	check("Macho alone clears wave 2 by fighting mice up the field", bt.house_hp > 0.0 and bt.wave == 3)
 	bt.cats[8] = {"key": "macho", "hp": 100.0, "max": 100.0, "cd": 5.0, "alive": true, "x": home.x + 50.0, "y": home.y - 150.0, "target": null, "face": 1.0, "n_atk": 0, "atk_t": 9.0, "phase": 0.0, "dust": 0.0, "moving": false}
 	bt.enemies = []
 	bt.spawn_queue = ["mouse"]

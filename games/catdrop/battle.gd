@@ -55,7 +55,7 @@ const COST_GROWTH := 1.35
 
 # Action sprites (art_src/*.webp -> tools/extract_sheet.gd -> art/<cat>_anim.png): 4 x 2 cells of ANIM_CELL,
 # every frame aligned on ANIM_ANCHOR (the ground point under the cat). Cats without an atlas use their portrait card.
-const ANIM_CELL := Vector2(160.0, 112.0)
+const ANIM_CELL := Vector2(192.0, 112.0)
 const ANIM_ANCHOR := Vector2(80.0, 84.0)
 const ANIM_COLS := 4
 const MAX_CAT_LEVEL := 5
@@ -509,6 +509,8 @@ func step(dt: float) -> void:
 		cat["cd"] = float(def["interval"])
 		cat["atk_t"] = 0.0
 		cat["n_atk"] = int(cat["n_atk"]) + 1
+		if absf(float(target["x"]) - cat_pos(i).x) > 4.0:
+			cat["face"] = signf(float(target["x"]) - cat_pos(i).x)
 		if def["kind"] == "melee":
 			slashes.append({"pos": Vector2(float(target["x"]), float(target["y"])), "t": 0.2})
 		var from := cat_pos(i)
@@ -648,8 +650,21 @@ func _draw_cat_card(key: String, rect: Rect2, dead: bool) -> void:
 
 
 func _sprite_frame(cat: Dictionary) -> int:
-	# Which atlas frame: idle 0, wind-up 1, lunge 2, swipe 3, bite 4, impact 5, retreat 6, landing 7.
 	var atk := float(cat["atk_t"])
+	if CAT_TYPES[cat["key"]]["kind"] == "ranged":
+		# Rosette: idle 0, aiming 1, the shot 2, recoil 3, bolt pull 4, bolt push 5, target lock 6.
+		if atk < 0.12:
+			return 2
+		if atk < 0.27:
+			return 3
+		if atk < 0.50:
+			return 4
+		if atk < 0.70:
+			return 5
+		if atk < 1.0:
+			return 6
+		return 1 if not enemies.is_empty() else 0
+	# Melee (Macho): idle 0, wind-up 1, lunge 2, swipe 3, bite 4, impact 5, retreat 6, landing 7.
 	if atk < 0.41:
 		if atk < 0.07:
 			return 2

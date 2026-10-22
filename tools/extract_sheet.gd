@@ -17,12 +17,12 @@ const SHEETS := {
 	"macho": "res://art_src/macho_attack_sheet.webp",
 	"rosette": "res://art_src/rosette_attack_sheet.webp",
 }
-const CELL := Vector2i(160, 112)
+const CELL := Vector2i(192, 112)
 const ANCHOR := Vector2i(80, 84)     # where the ground point sits in every cell
 const SCALE := 0.32
 const COLS := 4
 # Label rows on the sheet (y ranges); art rows are split halfway between them.
-const LABEL_BANDS := [Vector2i(20, 66), Vector2i(262, 308), Vector2i(508, 556), Vector2i(745, 795)]
+const LABEL_BANDS := [Vector2i(16, 72), Vector2i(258, 314), Vector2i(502, 563), Vector2i(742, 802)]
 const ROW_SPLITS := [264, 520, 762]
 const COL_SPLIT := 343
 # Frames where effects or the tail hide the perch: its centre by hand, in sheet pixels, per sheet.
@@ -172,7 +172,10 @@ func _init() -> void:
 		var perch: Array[Vector2] = []
 		var perch_px: Array[Vector2i] = []
 		for c in components(perch_mask, fw, fh):
-			if c["pixels"].size() >= 150:
+			# the perch is a wide shape at the bottom of the frame (a muzzle flash or fur patch is not)
+			var cr: Rect2i = c["rect"]
+			var cy := float(cr.get_center().y)
+			if c["pixels"].size() >= 150 and float(cr.size.x) >= 0.3 * float(fw) and cy > 0.6 * float(fh):
 				for p in c["pixels"]:
 					perch.append(Vector2(p))
 					perch_px.append(p)
