@@ -75,10 +75,10 @@ const GATES := [
 ]
 
 # --- Colours (crimson / black / amber) ---------------------------------------
-const COL_BG := Color("#7E1236")
+const COL_BG := Color("#1E121F")
 const COL_FIELD := Color("#101015")
 const COL_EDGE := Color("#0B0B0E")
-const COL_PEG := Color("#E0285E")
+const COL_PEG := Color("#FF2E93")
 const COL_AMBER := Color("#F2A81D")
 const COL_TEXT := Color("#F4F4F6")
 const COL_MUTED := Color("#A6A6B2")
@@ -109,6 +109,16 @@ var team_label: Label
 var shown_coins := 0.0      # the coin counter counts up towards `coins`
 var shake := 0.0
 var shaking := false
+var peg_lookup := {}        # rounded peg position -> peg position, to find the peg a ball touched
+var peg_fx := {}            # rounded peg position -> {t, off}: a flash and a small wobble after a hit
+var cup_dip := 0.0
+var cup_flash := 0.0        # the cup frame flashes when a ball lands          # the cup dips when it catches a ball
+var cup_squash := 0.0       # the cup squashes and shakes for 150ms when a ball lands
+var coin_pulse := 0.0       # the coin counter pops when coins increase
+var last_coins := 0
+var dropper_tex: Texture2D  # the launcher cat's poses (idle, release, drop, celebration), if the art exists
+var dropper_x := 195.0      # where the cat stood when the drop was made
+var drop_anim_t := 99.0     # seconds since the drop started
 var gate_flash := [0.0, 0.0, 0.0, 0.0, 0.0]
 var path_curve := Curve2D.new()
 var path_offsets: Array = []
@@ -133,10 +143,14 @@ func _ready() -> void:
 	_build_walls()
 	_build_funnels()
 	_build_pegs()
+	for p in pegs:
+		peg_lookup[Vector2i(roundi(p.x), roundi(p.y))] = p
 	_build_gates()
 	_build_cup()
 	_build_path()
 	_build_buttons()
+	if ResourceLoader.exists("res://games/catdrop/art/dropper_anim.png"):
+		dropper_tex = load("res://games/catdrop/art/dropper_anim.png")
 	_build_map_panel()
 	_refresh_panel()
 	_apply_state()
@@ -147,6 +161,7 @@ func _ready() -> void:
 func _on_start() -> void:
 	_load_game()
 	shown_coins = float(coins)
+	last_coins = coins
 	balls_left = balls_per_round()
 	_go_map()
 
@@ -463,7 +478,7 @@ func _add_row(id_: String, title_: String, y: float, portrait: String, max_pips:
 	var card := Panel.new()
 	card.position = Vector2(10.0, y)
 	card.size = Vector2(MAP_PANEL.size.x - 20.0, ROW_H)
-	card.add_theme_stylebox_override("panel", UIKit.box(Color("#262631"), UIKit.INK, 3, 12))
+	card.add_theme_stylebox_override("panel", UIKit.box(Color("#322A3B"), UIKit.INK, 3, 12, 0, 5))
 	map_panel.add_child(card)
 
 	var text_x := 20.0
@@ -482,18 +497,18 @@ func _add_row(id_: String, title_: String, y: float, portrait: String, max_pips:
 		pic.position = Vector2(19.0, y + 8.0)
 		pic.size = Vector2(38.0, 38.0)
 		map_panel.add_child(pic)
-		badge = _make_label("", 12, UIKit.CREAM, true)
-		badge.position = Vector2(14.0, y + 30.0)
-		map_panel.add_child(badge)
+		badge = UIKit.label(map_panel, Rect2(34.0, y + 36.0, 28.0, 15.0), "", 10, UIKit.INK, HORIZONTAL_ALIGNMENT_CENTER, false)
+		badge.add_theme_stylebox_override("normal", UIKit.box(UIKit.GOLD, UIKit.INK, 2, 7))
+		badge.add_theme_font_override("font", UIKit.heavy())
 		text_x = 70.0
 
-	var name_label := _make_label(title_, 18, UIKit.CREAM, true)
-	name_label.position = Vector2(text_x, y + 0.0)
-	map_panel.add_child(name_label)
+	var name_label := UIKit.label(map_panel, Rect2(text_x, y + 2.0, 150.0, 24.0), title_, 18, UIKit.CREAM)
+	name_label.name = "Name"
+	pass
 
-	var desc := _make_label("", 12, COL_MUTED)
-	desc.position = Vector2(text_x, y + 26.0)
-	map_panel.add_child(desc)
+	var desc := UIKit.label(map_panel, Rect2(text_x, y + 26.0, 150.0, 16.0), "", 12, COL_MUTED, HORIZONTAL_ALIGNMENT_LEFT, false)
+	desc.name = "Desc"
+	pass
 
 	var pips := Control.new()
 	pips.position = Vector2(text_x, y + 43.0)
@@ -520,20 +535,31 @@ func _add_row(id_: String, title_: String, y: float, portrait: String, max_pips:
 		map_panel.add_child(lvl_btn)
 
 	map_rows[id_] = {"desc": desc, "pips": pips, "buy": buy_btn, "lvl": lvl_btn, "badge": badge}
+	if portrait != "":
+		var lock_overlay := Control.new()
+		lock_overlay.position = Vector2(16.0, y + 5.0)
+		lock_overlay.size = Vector2(44.0, 44.0)
+		lock_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lock_overlay.visible = false
+		lock_overlay.draw.connect(func():
+			lock_overlay.draw_style_box(UIKit.box(Color(0.05, 0.03, 0.08, 0.78), Color(0, 0, 0, 0), 0, 8), Rect2(Vector2.ZERO, lock_overlay.size))
+			UIKit.lock(lock_overlay, Vector2(22.0, 20.0), 9.0, UIKit.MUTED))
+		map_panel.add_child(lock_overlay)
+		map_rows[id_]["lock"] = lock_overlay
 
 
 func _add_up_card(key: String, x: float, y: float) -> void:
 	var card := Panel.new()
 	card.position = Vector2(x, y)
 	card.size = Vector2(110.0, 70.0)
-	card.add_theme_stylebox_override("panel", UIKit.box(Color("#262631"), UIKit.INK, 3, 12))
+	card.add_theme_stylebox_override("panel", UIKit.box(Color("#322A3B"), UIKit.INK, 3, 12, 0, 5))
 	map_panel.add_child(card)
-	var name_label := _make_label(str(UPGRADES[key]["name"]), 12, UIKit.CREAM, true)
-	name_label.position = Vector2(x + 6.0, y + 0.0)
-	map_panel.add_child(name_label)
-	var desc := _make_label("", 10, COL_MUTED)
-	desc.position = Vector2(x + 7.0, y + 16.0)
-	map_panel.add_child(desc)
+	var name_label := UIKit.label(map_panel, Rect2(x + 6.0, y + 2.0, 98.0, 16.0), str(UPGRADES[key]["name"]), 12, UIKit.CREAM)
+	name_label.name = "Name"
+	pass
+	var desc := UIKit.label(map_panel, Rect2(x + 7.0, y + 17.0, 98.0, 13.0), "", 10, COL_MUTED, HORIZONTAL_ALIGNMENT_LEFT, false)
+	desc.name = "Desc"
+	pass
 	var pips := Control.new()
 	pips.position = Vector2(x + 7.0, y + 31.0)
 	map_panel.add_child(pips)
@@ -555,12 +581,12 @@ func _build_map_panel() -> void:
 	map_panel = Panel.new()
 	map_panel.position = MAP_PANEL.position
 	map_panel.size = MAP_PANEL.size
-	map_panel.add_theme_stylebox_override("panel", UIKit.box(Color("#17171E"), UIKit.AMBER, 4, 18, 3))
+	map_panel.add_theme_stylebox_override("panel", UIKit.box(Color("#221B29"), UIKit.GOLD, 4, 18, 3, 14))
 	add_child(map_panel)
 
-	team_label = _make_label("YOUR CATS", 12, UIKit.AMBER, true)
-	team_label.position = Vector2(16.0, 0.0)
-	map_panel.add_child(team_label)
+	team_label = UIKit.label(map_panel, Rect2(14.0, 5.0, 330.0, 16.0), "YOUR CATS", 12, UIKit.GOLD)
+	team_label.name = "TeamLabel"
+	pass
 	for i in battle.CAT_ORDER.size():
 		var key: String = battle.CAT_ORDER[i]
 		var def: Dictionary = battle.CAT_TYPES[key]
@@ -571,9 +597,9 @@ func _build_map_panel() -> void:
 		lvl_btn.pressed.connect(func(): upgrade_cat(key))
 
 	var up_y := 22.0 + float(battle.CAT_ORDER.size()) * ROW_STEP
-	var up_heading := _make_label("BOARD UPGRADES", 12, UIKit.AMBER, true)
-	up_heading.position = Vector2(16.0, up_y - 4.0)
-	map_panel.add_child(up_heading)
+	var up_heading := UIKit.label(map_panel, Rect2(14.0, up_y - 7.0, 330.0, 16.0), "BOARD UPGRADES", 12, UIKit.GOLD)
+	up_heading.name = "UpHeading"
+	pass
 	for i in UPGRADE_ORDER.size():
 		var key: String = UPGRADE_ORDER[i]
 		_add_up_card(key, 10.0 + float(i) * 115.0, up_y + 16.0)
@@ -602,6 +628,8 @@ func _refresh_panel() -> void:
 		var buy_btn: Button = row["buy"]
 		var lvl_btn: Button = row["lvl"]
 		var desc: Label = row["desc"]
+		if row.has("lock"):
+			(row["lock"] as Control).visible = false
 		var role: String = str(battle.CAT_TYPES[key]["role"]).capitalize()
 		desc.text = "%s  -  own %d" % [role, int(battle.owned[key])]
 		(row["badge"] as Label).text = "Lv %d" % int(battle.cat_levels[key])
@@ -621,6 +649,8 @@ func _refresh_panel() -> void:
 			lvl_btn.disabled = coins < lcost
 		if not cat_unlocked(key):
 			desc.text = "Clear wave %d to unlock" % int(CAT_UNLOCK_WAVE[key])
+			if row.has("lock"):
+				(row["lock"] as Control).visible = true
 			buy_btn.text = "LOCKED"
 			buy_btn.disabled = true
 			lvl_btn.text = "LOCKED"
@@ -666,6 +696,7 @@ func _go_map() -> void:
 	round_over = false
 	_refresh_panel()
 	_apply_state()
+	UIKit.pop_in(map_panel, 0.94, 0.25)
 	_save_game()
 
 
@@ -675,6 +706,7 @@ func _begin_round() -> void:
 	dropped = false
 	round_over = false
 	balls_left = balls_per_round() + bonus_balls
+	drop_anim_t = 99.0
 	_apply_state()
 
 
@@ -702,6 +734,18 @@ func _process(delta: float) -> void:
 	drop_x = 195.0 + sin(t * SWEEP_SPEED) * SWEEP_RANGE
 	shown_coins = move_toward(shown_coins, float(coins), maxf(2.0, absf(float(coins) - shown_coins) * 6.0 * delta))
 	fx.update(delta)
+	drop_anim_t += delta
+	for k in peg_fx.keys():
+		peg_fx[k]["t"] = float(peg_fx[k]["t"]) - delta
+		if float(peg_fx[k]["t"]) <= 0.0:
+			peg_fx.erase(k)
+	cup_dip = move_toward(cup_dip, 0.0, 18.0 * delta)
+	cup_flash = maxf(cup_flash - delta, 0.0)
+	cup_squash = maxf(cup_squash - delta, 0.0)
+	if coins > last_coins:
+		coin_pulse = 1.0
+	last_coins = coins
+	coin_pulse = maxf(coin_pulse - delta * 5.0, 0.0)
 	for i in gate_flash.size():
 		gate_flash[i] = maxf(0.0, float(gate_flash[i]) - delta)
 	shake = move_toward(shake, 0.0, 22.0 * delta)
@@ -713,7 +757,8 @@ func _process(delta: float) -> void:
 		get_viewport().canvas_transform = Transform2D.IDENTITY
 		shaking = false
 	# The play button breathes on the map so it reads as the thing to press
-	main_btn.scale = Vector2.ONE * (1.0 + 0.025 * sin(t * 4.0)) if (state == "map" and not main_btn.disabled) else Vector2.ONE
+	if not main_btn.button_pressed:
+		main_btn.scale = Vector2.ONE * (1.0 + 0.025 * sin(t * 4.0)) if (state == "map" and not main_btn.disabled) else Vector2.ONE
 
 	var alive := get_tree().get_nodes_in_group("balls")
 
@@ -724,6 +769,7 @@ func _process(delta: float) -> void:
 
 	if state == "drop" and dropped and balls_left == 0 and not dropping and not round_over and alive.is_empty():
 		round_over = true
+		_celebrate_cup()
 		_save_game()
 		_report(XP_PER_ROUND)
 
@@ -787,6 +833,8 @@ func _drop_ball() -> void:
 		return
 	dropped = true
 	dropping = true
+	drop_anim_t = 0.0
+	dropper_x = drop_x
 	bonus_balls = 0
 	_save_game()
 	var x := drop_x
@@ -799,11 +847,14 @@ func _drop_ball() -> void:
 	dropping = false
 
 
-func _spawn_ball(pos: Vector2, seen: Dictionary, vel: Vector2) -> void:
+func _spawn_ball(pos: Vector2, seen: Dictionary, vel: Vector2, pop: bool = false) -> void:
 	var ball = BallScript.new()
 	ball.position = pos
 	ball.linear_velocity = vel
 	ball.gates_seen = seen.duplicate()
+	ball.hit.connect(_on_ball_hit)
+	if pop:
+		ball.pop_t = 0.25
 	add_child(ball)
 
 
@@ -817,6 +868,9 @@ func _on_gate_entered(body, idx: int) -> void:
 	var mult := gate_mult(idx)
 	var grect: Rect2 = GATES[idx]["rect"]
 	gate_flash[idx] = 0.3
+	fx.ring(body.position, UIKit.AMBER if mult >= 5 else UIKit.PINK, 8.0, 46.0, 0.4)
+	if randi() % 2 == 0:
+		fx.popup(body.position + Vector2(0.0, -16.0), "+%d" % (mult - 1), UIKit.CREAM, 15, 0.55)
 	fx.burst(body.position, UIKit.AMBER if mult >= 5 else UIKit.PINK, 8, 150.0, 0.45, 3.0, 200.0)
 	if mult >= 5:
 		kick(1.4)
@@ -827,7 +881,7 @@ func _on_gate_entered(body, idx: int) -> void:
 		var offset := Vector2(randf_range(-6.0, 6.0), randf_range(-4.0, 4.0))
 		var vel: Vector2 = body.linear_velocity + Vector2(randf_range(-50.0, 50.0), 0.0)
 		# Physics callbacks can't add bodies directly, so defer the spawn.
-		call_deferred("_spawn_ball", body.position + offset, body.gates_seen, vel)
+		call_deferred("_spawn_ball", body.position + offset, body.gates_seen, vel, true)
 
 
 func _on_cup_entered(body) -> void:
@@ -835,10 +889,31 @@ func _on_cup_entered(body) -> void:
 		return
 	coins += coins_per_ball()
 	stats["balls_banked"] = int(stats["balls_banked"]) + 1
+	cup_dip = minf(cup_dip + 2.5, 6.0)
+	cup_flash = 0.25
+	cup_squash = 0.15
 	fx.burst(Vector2(body.position.x, CUP_SENSOR.position.y), UIKit.AMBER, 4, 110.0, 0.35, 2.6, 400.0)
 	if randi() % 3 == 0:
 		fx.popup(Vector2(CUP_SENSOR.get_center().x + randf_range(-30.0, 30.0), CUP_SENSOR.position.y - 8.0), "+%d" % coins_per_ball(), UIKit.AMBER, 15, 0.55)
 	body.queue_free()
+
+
+func _on_ball_hit(pos: Vector2) -> void:
+	var key := Vector2i(roundi(pos.x), roundi(pos.y))
+	if not peg_lookup.has(key):
+		return
+	peg_fx[key] = {"t": 0.10, "off": Vector2.from_angle(randf() * TAU) * 2.5}
+	if randf() < 0.5:
+		fx.burst(pos, Color("#FFD1E0"), 3, 110.0, 0.25, 2.0, 0.0)
+
+
+func _celebrate_cup() -> void:
+	var c := Vector2(CUP_SENSOR.get_center().x, CUP_SENSOR.position.y)
+	fx.ring(c, UIKit.AMBER, 10.0, 90.0, 0.6)
+	for col in [UIKit.AMBER, UIKit.PINK, UIKit.CREAM, Color("#6FD3FF")]:
+		fx.burst(c, col, 14, 260.0, 0.9, 3.5, 380.0)
+	fx.popup(c + Vector2(0.0, -30.0), "CUP!", UIKit.GOLD, 40, 0.9, true)
+	kick(3.5)
 
 
 func _on_wave_cleared(w: int) -> void:
@@ -893,11 +968,14 @@ func _build_path() -> void:
 
 
 func _draw_wallpaper() -> void:
-	UIKit.gradient(self, Rect2(0.0, 0.0, 390.0, 844.0), UIKit.CRIMSON_LIGHT, UIKit.CRIMSON_DARK)
+	UIKit.gradient(self, Rect2(0.0, 0.0, 390.0, 844.0), Color("#2C1833"), UIKit.PLUM)
 	var x := -6.0
 	while x < 390.0:
-		draw_rect(Rect2(x, 0.0, 14.0, 844.0), Color(0.0, 0.0, 0.0, 0.07))
+		draw_rect(Rect2(x, 0.0, 14.0, 844.0), Color(1.0, 1.0, 1.0, 0.016))
 		x += 28.0
+	# a faint magenta glow behind the content
+	for i in 5:
+		draw_circle(Vector2(195.0, 300.0), 260.0 - float(i) * 40.0, Color(UIKit.PINK, 0.012))
 
 
 func _draw_cheese(c: Vector2, s: float) -> void:
@@ -920,15 +998,16 @@ func _draw_map(font: Font) -> void:
 	draw_circle(Vector2(350.0, 190.0), 15.0, Color("#1B0710"))
 
 	# Title and story strip
-	UIKit.panel(self, Rect2(14.0, 88.0, 362.0, 50.0), Color(UIKit.INK_SOFT, 0.92), UIKit.INK, 3, 12)
-	UIKit.text(self, Vector2(14.0, 108.0), CHAPTER_TITLE, 15, UIKit.AMBER, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER, 362.0)
+	UIKit.card(self, Rect2(14.0, 86.0, 362.0, 52.0), Color("#33283B"), Color("#1A131F"), UIKit.INK, 14)
+	UIKit.text_in(self, Rect2(14.0, 88.0, 362.0, 26.0), CHAPTER_TITLE, 15, UIKit.GOLD, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
 	var story_line: String = STORY[clampi(battle.wave - 1, 0, STORY.size() - 1)]
-	draw_string(font, Vector2(14.0, 128.0), story_line, HORIZONTAL_ALIGNMENT_CENTER, 362.0, 13, UIKit.CREAM)
+	UIKit.body_in(self, Rect2(14.0, 112.0, 362.0, 24.0), story_line, 13, UIKit.CREAM, HORIZONTAL_ALIGNMENT_CENTER)
 
 	# The road
 	var baked := path_curve.get_baked_points()
 	draw_polyline(baked, UIKit.INK, 40.0, true)
-	draw_polyline(baked, Color("#4B0F26"), 32.0, true)
+	draw_polyline(baked, Color("#3E2646"), 32.0, true)
+	draw_polyline(baked, Color(1.0, 1.0, 1.0, 0.05), 24.0, true)
 	var j := 0
 	while j + 3 < baked.size():
 		draw_line(baked[j], baked[j + 3], Color(UIKit.CREAM, 0.22), 3.0)
@@ -937,8 +1016,9 @@ func _draw_map(font: Font) -> void:
 	var done_idx: int = int(float(path_offsets[cur - 1]) / maxf(path_curve.bake_interval, 0.01))
 	if done_idx > 1:
 		var done_pts := baked.slice(0, mini(done_idx + 1, baked.size()))
+		draw_polyline(done_pts, Color(UIKit.GOLD, 0.25), 16.0, true)
 		draw_polyline(done_pts, UIKit.AMBER_DARK, 12.0, true)
-		draw_polyline(done_pts, UIKit.AMBER, 7.0, true)
+		draw_polyline(done_pts, UIKit.GOLD, 7.0, true)
 
 	# Nodes
 	var n_nodes: int = battle.MAX_WAVE
@@ -947,15 +1027,16 @@ func _draw_map(font: Font) -> void:
 		var boss: bool = n == n_nodes
 		if n < battle.wave:
 			draw_circle(p, 15.0, UIKit.INK)
-			draw_circle(p, 12.0, UIKit.AMBER)
+			draw_circle(p, 12.0, UIKit.GOLD)
 			UIKit.star(self, p, 8.0, UIKit.CREAM)
 		elif n == battle.wave:
 			var pulse := 1.0 + 0.1 * sin(t * 4.0)
-			draw_circle(p, 29.0 * pulse, Color(UIKit.AMBER, 0.28))
+			draw_circle(p, 34.0 * pulse, Color(UIKit.PINK, 0.16))
+			draw_circle(p, 29.0 * pulse, Color(UIKit.PINK, 0.26))
 			draw_circle(p, 24.0, UIKit.INK)
-			draw_circle(p, 21.0, UIKit.AMBER)
+			draw_circle(p, 21.0, UIKit.GOLD)
 			draw_circle(p, 17.0, UIKit.PINK)
-			UIKit.text(self, p + Vector2(-20.0, 8.0), str(n), 22, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER, 40.0)
+			UIKit.text_in(self, Rect2(p - Vector2(20.0, 20.0), Vector2(40.0, 40.0)), str(n), 22, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
 		else:
 			var r := 21.0 if boss else 14.0
 			draw_circle(p, r + 3.0, UIKit.INK)
@@ -963,22 +1044,36 @@ func _draw_map(font: Font) -> void:
 			if boss:
 				UIKit.crown(self, p + Vector2(0.0, -2.0), 11.0, UIKit.AMBER)
 			else:
-				UIKit.text(self, p + Vector2(-14.0, 6.0), str(n), 15, UIKit.MUTED, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER, 28.0)
+				UIKit.text_in(self, Rect2(p - Vector2(14.0, 14.0), Vector2(28.0, 28.0)), str(n), 15, UIKit.MUTED, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
 		if boss and n <= battle.wave:
 			UIKit.crown(self, p + Vector2(0.0, -34.0), 12.0, UIKit.AMBER)
 	# Macho marks the next wave, bobbing above its node
 	var here := _path_point(cur)
 	var bob := sin(t * 3.0) * 3.0
 	var frame := Rect2(here + Vector2(-20.0, -70.0 + bob), Vector2(40.0, 40.0))
-	UIKit.panel(self, frame, UIKit.CRIMSON, UIKit.AMBER, 3, 9)
+	UIKit.panel(self, frame, UIKit.CRIMSON, UIKit.GOLD, 3, 9)
 	if battle.textures.has("macho"):
 		draw_texture_rect(battle.textures["macho"], frame.grow(-4.0), false)
 	draw_colored_polygon(PackedVector2Array([here + Vector2(-7.0, -29.0 + bob), here + Vector2(7.0, -29.0 + bob), here + Vector2(0.0, -21.0 + bob)]), UIKit.AMBER)
 	if bonus_balls > 0:
-		UIKit.text(self, Vector2(16.0, 384.0), "+%d bonus balls waiting" % bonus_balls, 13, UIKit.AMBER, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER, 358.0)
+		UIKit.text_in(self, Rect2(16.0, 372.0, 358.0, 22.0), "+%d bonus balls waiting" % bonus_balls, 13, UIKit.GOLD, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _draw_dropper() -> void:
+	if dropper_tex != null:
+		var dx := dropper_x if dropped else drop_x
+		var cc := Vector2(dx, FIELD.position.y + 14.0 + (sin(t * 3.0) * 1.5 if not dropped else 0.0))
+		if not dropped:
+			draw_dashed_line(cc + Vector2(0.0, 34.0), cc + Vector2(0.0, 150.0), Color(UIKit.AMBER, 0.55), 3.0, 8.0)
+		var frame := 0
+		if round_over:
+			frame = 3
+		elif dropped:
+			frame = 2 if drop_anim_t < 0.35 else 1
+		var k := 0.78 * ((1.0 + 0.06 * sin(t * 12.0)) if round_over else 1.0)
+		var size := Vector2(112.0, 96.0) * k
+		draw_texture_rect_region(dropper_tex, Rect2(cc - size * 0.5, size), Rect2(Vector2(float(frame) * 112.0, 0.0), Vector2(112.0, 96.0)))
+		return
 	var c := Vector2(drop_x, FIELD.position.y + 6.0)
 	draw_dashed_line(c + Vector2(0.0, 30.0), c + Vector2(0.0, 160.0), Color(UIKit.AMBER, 0.55), 3.0, 8.0)
 	# ears
@@ -1006,39 +1101,56 @@ func _draw_dropper() -> void:
 
 
 func _draw_board() -> void:
-	UIKit.panel(self, FIELD.grow(5.0), UIKit.INK, UIKit.INK, 5, 14)
-	UIKit.gradient(self, FIELD, Color("#1B1B25"), Color("#0C0C11"))
+	UIKit.board_frame(self, FIELD, UIKit.PINK, t)
 
-	# Funnels and cup
+	# Funnels
 	for f: PackedVector2Array in [_funnel_left(), _funnel_right()]:
 		var outline: PackedVector2Array = f.duplicate()
 		outline.append(f[0])
-		draw_colored_polygon(f, Color("#3A3A46"))
+		draw_colored_polygon(f, Color("#3C3346"))
 		draw_polyline(outline, UIKit.INK, 4.0, true)
-	draw_rect(Rect2(CUP_SENSOR.position.x - 4.0, 646.0, CUP_SENSOR.size.x + 8.0, 64.0), UIKit.INK)
-	draw_rect(Rect2(CUP_SENSOR.position.x, 650.0, CUP_SENSOR.size.x, 56.0), Color("#23141C"))
-	draw_rect(CUP_WALL_LEFT, COL_AMBER)
-	draw_rect(CUP_WALL_RIGHT, COL_AMBER)
-	draw_rect(Rect2(CUP_WALL_LEFT.position.x, 700.0, 128.0, 6.0), COL_AMBER)
-	UIKit.text(self, Vector2(CUP_SENSOR.position.x, 686.0), "CUP", 20, UIKit.AMBER, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER, CUP_SENSOR.size.x)
 
-	# Pegs
+	# The cup: a glowing gold-framed receptacle that dips and flashes when a ball lands
+	var flash := cup_flash / 0.25
+	var cq := cup_squash / 0.15
+	var csx := 1.0 + 0.1 * cq
+	var csy := 1.0 - 0.2 * cq
+	var cpiv := Vector2(CUP_SENSOR.get_center().x, 706.0)
+	draw_set_transform_matrix(Transform2D(Vector2(csx, 0.0), Vector2(0.0, csy), cpiv - Vector2(csx * cpiv.x, csy * cpiv.y) + Vector2(sin(t * 70.0) * 3.0 * cq, cup_dip)))
+	var cup_rect := Rect2(CUP_SENSOR.position.x - 6.0, 646.0, CUP_SENSOR.size.x + 12.0, 64.0)
+	UIKit.glow_rect(self, cup_rect, UIKit.GOLD, 10, 0.55 + 0.9 * flash)
+	draw_rect(Rect2(CUP_SENSOR.position.x, 650.0, CUP_SENSOR.size.x, 56.0), Color("#26152B").lerp(Color("#6B4A12"), flash * 0.8))
+	draw_rect(CUP_WALL_LEFT, UIKit.GOLD)
+	draw_rect(CUP_WALL_RIGHT, UIKit.GOLD)
+	draw_rect(Rect2(CUP_WALL_LEFT.position.x, 700.0, 128.0, 6.0), UIKit.GOLD)
+	UIKit.text_in(self, Rect2(CUP_SENSOR.position.x, 650.0, CUP_SENSOR.size.x, 56.0), "CUP", 20, UIKit.GOLD.lerp(Color.WHITE, flash), UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# Pegs, with a soft glow
 	for p in pegs:
-		draw_circle(p, 7.6, UIKit.INK)
-		draw_circle(p, 5.6, COL_PEG)
-		draw_circle(p + Vector2(-1.6, -1.8), 1.8, Color("#FF8FB0"))
+		var key := Vector2i(roundi(p.x), roundi(p.y))
+		var pp: Vector2 = p
+		var pf := 0.0
+		if peg_fx.has(key):
+			pf = float(peg_fx[key]["t"]) / 0.10
+			pp += Vector2(peg_fx[key]["off"]) * pf
+		draw_circle(pp, 11.0 + 3.0 * pf, Color(COL_PEG, 0.10 + 0.25 * pf))
+		draw_circle(pp, 7.6 + 2.0 * pf, UIKit.INK)
+		draw_circle(pp, 5.6 + 1.5 * pf, COL_PEG.lerp(Color.WHITE, pf))
+		draw_circle(pp + Vector2(-1.6, -1.8), 1.8, Color("#FFB3D4"))
 
-	# Gates
+	# Gates: glowing bumpers, cyan for x2, magenta for x3, gold for x4 and up
 	for i in GATES.size():
 		var r: Rect2 = GATES[i]["rect"]
 		var mult := gate_mult(i)
-		var fill := Color("#4A4A58")
-		if mult >= 5:
-			fill = COL_AMBER
-		elif mult >= 3:
-			fill = COL_PEG
-		var flash: float = float(gate_flash[i]) / 0.3
-		var grow := 3.0 * flash
+		var col := UIKit.CYAN
+		if mult >= 4:
+			col = UIKit.GOLD
+		elif mult == 3:
+			col = UIKit.PINK
+		var gflash: float = float(gate_flash[i]) / 0.3
+		var pulse := 0.5 + 0.5 * sin(t * 3.0 + float(i) * 1.3)
+		var grow := 3.0 * gflash
 		var poly := PackedVector2Array([
 			Vector2(r.position.x + 8.0 - grow, r.position.y - grow),
 			Vector2(r.end.x + grow, r.position.y - grow),
@@ -1047,32 +1159,39 @@ func _draw_board() -> void:
 		])
 		var poly_out: PackedVector2Array = poly.duplicate()
 		poly_out.append(poly[0])
-		draw_colored_polygon(poly, fill.lightened(0.35 * flash))
-		draw_polyline(poly_out, UIKit.INK, 4.0, true)
-		UIKit.text(self, Vector2(r.position.x, r.position.y + 22.0), "X%d" % mult, 22, UIKit.CREAM if mult < 5 else UIKit.INK, UIKit.INK if mult < 5 else UIKit.AMBER_DARK, 5 if mult < 5 else 0, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+		draw_polyline(poly_out, Color(col, 0.07 + 0.07 * pulse + 0.30 * gflash), 15.0, true)
+		draw_polyline(poly_out, Color(col, 0.14 + 0.10 * pulse + 0.30 * gflash), 8.0, true)
+		draw_colored_polygon(poly, col.darkened(0.78).lerp(col, 0.35 * gflash))
+		var top_half := PackedVector2Array([poly[0], poly[1], poly[1].lerp(poly[2], 0.5), poly[0].lerp(poly[3], 0.5)])
+		draw_colored_polygon(top_half, Color(col, 0.20))
+		draw_polyline(poly_out, UIKit.INK, 5.5, true)
+		draw_polyline(poly_out, col.lerp(Color.WHITE, 0.35 * gflash), 3.0, true)
+		UIKit.text_in(self, r, "X%d" % mult, 22, Color.WHITE, col.darkened(0.7), 5, HORIZONTAL_ALIGNMENT_CENTER)
 
-	if not dropped:
-		_draw_dropper()
+	_draw_dropper()
 
 
 func _draw_hud() -> void:
 	# Coin pill
-	UIKit.panel(self, Rect2(12.0, 12.0, 168.0, 54.0), UIKit.INK_SOFT, UIKit.INK, 4, 27, 3)
-	UIKit.coin(self, Vector2(40.0, 39.0), 15.0)
-	UIKit.text(self, Vector2(60.0, 49.0), str(int(round(shown_coins))), 28, UIKit.AMBER, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT, 112.0)
+	UIKit.card(self, Rect2(12.0, 10.0, 168.0, 54.0), Color("#33283B"), Color("#18111C"), UIKit.INK, 27)
+	UIKit.coin(self, Vector2(40.0, 37.0), 15.0)
+	var cs := 1.0 + 0.15 * coin_pulse
+	draw_set_transform_matrix(Transform2D(Vector2(cs, 0.0), Vector2(0.0, cs), Vector2(60.0, 37.0) - Vector2(60.0, 37.0) * cs))
+	UIKit.text_in(self, Rect2(60.0, 10.0, 116.0, 50.0), str(int(round(shown_coins))), 28, UIKit.GOLD, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# Wave or balls pill
-	UIKit.panel(self, Rect2(198.0, 12.0, 180.0, 54.0), UIKit.INK_SOFT, UIKit.INK, 4, 27, 3)
+	UIKit.card(self, Rect2(198.0, 10.0, 180.0, 54.0), Color("#33283B"), Color("#18111C"), UIKit.INK, 27)
 	if state == "drop":
-		draw_circle(Vector2(224.0, 39.0), 12.0, UIKit.INK)
-		draw_circle(Vector2(224.0, 39.0), 9.5, UIKit.AMBER)
-		draw_circle(Vector2(221.0, 36.0), 3.0, Color("#FFE9A8"))
+		draw_circle(Vector2(224.0, 37.0), 12.0, UIKit.INK)
+		draw_circle(Vector2(224.0, 37.0), 9.5, UIKit.AMBER)
+		draw_circle(Vector2(221.0, 34.0), 3.0, Color("#FFE9A8"))
 		var total := balls_per_round() + (bonus_balls if not dropped else 0)
-		UIKit.text(self, Vector2(242.0, 48.0), "%d/%d" % [balls_left, total], 26, UIKit.CREAM, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT, 130.0)
+		UIKit.text_in(self, Rect2(242.0, 10.0, 130.0, 50.0), "%d/%d" % [balls_left, total], 26, UIKit.CREAM, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT)
 		if bonus_balls > 0 and not dropped:
-			UIKit.text(self, Vector2(198.0, 84.0), "includes %d bonus balls" % bonus_balls, 12, UIKit.AMBER, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER, 180.0)
+			UIKit.text_in(self, Rect2(198.0, 68.0, 180.0, 20.0), "includes %d bonus balls" % bonus_balls, 12, UIKit.GOLD, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
 	else:
-		UIKit.star(self, Vector2(224.0, 39.0), 13.0, UIKit.AMBER)
-		UIKit.text(self, Vector2(242.0, 48.0), "WAVE %d/%d" % [battle.wave, battle.MAX_WAVE], 22, UIKit.CREAM, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT, 134.0)
+		UIKit.star(self, Vector2(224.0, 37.0), 13.0, UIKit.GOLD)
+		UIKit.text_in(self, Rect2(242.0, 10.0, 134.0, 50.0), "WAVE %d/%d" % [battle.wave, battle.MAX_WAVE], 22, UIKit.CREAM, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT)
 
 
 func _draw() -> void:
@@ -1087,6 +1206,6 @@ func _draw() -> void:
 		fx.draw(self)
 
 	if state == "drop" and round_over:
-		UIKit.panel(self, Rect2(FIELD.position.x + 26.0, 360.0, FIELD.size.x - 52.0, 104.0), Color(UIKit.INK_SOFT, 0.96), UIKit.AMBER, 4, 16, 3)
-		UIKit.text(self, Vector2(FIELD.position.x, 408.0), "ROUND OVER", 38, UIKit.AMBER, UIKit.INK, 8, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x)
-		UIKit.text(self, Vector2(FIELD.position.x, 438.0), "Now defend the house", 16, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x)
+		UIKit.card(self, Rect2(FIELD.position.x + 26.0, 358.0, FIELD.size.x - 52.0, 108.0), Color("#3A2D44"), Color("#1A131F"), UIKit.GOLD, 18)
+		UIKit.text_in(self, Rect2(FIELD.position.x, 364.0, FIELD.size.x, 56.0), "ROUND OVER", 38, UIKit.GOLD, UIKit.INK, 8, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.text_in(self, Rect2(FIELD.position.x, 420.0, FIELD.size.x, 30.0), "Now defend the house", 16, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)

@@ -769,8 +769,7 @@ func _draw_cat_anim(i: int, center: Vector2, dead: bool) -> void:
 
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	UIKit.panel(self, FIELD.grow(5.0), UIKit.INK, UIKit.INK, 5, 14)
-	UIKit.gradient(self, FIELD, Color("#1B1B25"), Color("#0C0C11"))
+	UIKit.board_frame(self, FIELD, UIKit.PINK, float(Time.get_ticks_msec()) / 1000.0)
 
 	# Lane guides
 	for c in COLS:
@@ -778,9 +777,9 @@ func _draw() -> void:
 		draw_dashed_line(Vector2(x, 176.0), Vector2(x, GRID_ORIGIN.y - 6.0), Color(1.0, 1.0, 1.0, 0.07), 2.0, 8.0)
 
 	# House bar
-	UIKit.text(self, Vector2(26.0, 158.0), "HOUSE", 14, UIKit.CREAM, UIKit.INK, 4)
+	UIKit.text_in(self, Rect2(26.0, 141.0, 64.0, 18.0), "HOUSE", 14, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
 	_draw_hp_bar(Rect2(92.0, 144.0, 226.0, 14.0), house_hp / HOUSE_MAX, COL_PEG)
-	UIKit.text(self, Vector2(326.0, 158.0), str(int(maxf(house_hp, 0.0))), 14, UIKit.CREAM, UIKit.INK, 4)
+	UIKit.text_in(self, Rect2(324.0, 141.0, 44.0, 18.0), str(int(maxf(house_hp, 0.0))), 14, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
 
 	# Tiles and cats
 	for i in COLS * ROWS:
@@ -790,13 +789,18 @@ func _draw() -> void:
 		var key: String = grid[i]
 		match kind:
 			"flat":
-				UIKit.panel(self, r, Color("#22222C"), UIKit.INK, 3, 10)
+				UIKit.panel(self, r, Color("#2C2533"), UIKit.INK, 3, 10)
 			"raised":
 				UIKit.panel(self, r, Color("#5A5A6C"), UIKit.INK, 3, 10, 8)
 				draw_rect(Rect2(r.position.x + 5.0, r.position.y + 4.0, r.size.x - 10.0, 4.0), Color("#9A9AAE"))
 			"hole":
 				UIKit.panel(self, r, Color("#16161C"), UIKit.INK, 3, 10)
 				draw_rect(Rect2(r.position.x + 9.0, r.position.y + 11.0, r.size.x - 18.0, r.size.y - 20.0), Color.BLACK)
+		UIKit.corner_accents(self, r.grow(-4.0), Color(1.0, 1.0, 1.0, 0.16))
+		if not active and selected != "" and grid[i] == "" and spare(selected) > 0:
+			var sel_pulse := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) / 1000.0 * 4.0)
+			UIKit.glow_rect(self, r.grow(-1.0), UIKit.CYAN, 10, 0.45 + 0.55 * sel_pulse)
+			UIKit.corner_accents(self, r.grow(-4.0), UIKit.CYAN, 11.0, 3.0)
 		if key != "" and is_charging(i):
 			draw_rect(r.grow(-6.0), Color(1.0, 1.0, 1.0, 0.05), false, 2.0)
 		elif key != "":
@@ -847,13 +851,15 @@ func _draw() -> void:
 			var key: String = CAT_ORDER[s]
 			var cr := _chip_rect(s)
 			var sel := selected == key
-			UIKit.panel(self, cr, Color("#3A2A12") if sel else UIKit.INK_SOFT, UIKit.AMBER if sel else UIKit.INK, 3, 10, 3)
+			UIKit.card(self, cr, Color("#4A3A55") if sel else Color("#34293D"), Color("#241C2B"), UIKit.INK, 10)
+			if sel:
+				UIKit.glow_rect(self, cr, UIKit.GOLD, 10, 1.0)
 			_draw_portrait(key, Rect2(cr.position.x + 6.0, cr.position.y + 6.0, 30.0, 30.0), false)
-			UIKit.text(self, Vector2(cr.position.x + 40.0, cr.position.y + 20.0), str(CAT_TYPES[key]["name"]), 13, UIKit.CREAM, UIKit.INK, 4)
-			draw_string(font, Vector2(cr.position.x + 40.0, cr.position.y + 37.0), "%d spare" % spare(key), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, COL_AMBER if spare(key) > 0 else COL_MUTED)
+			UIKit.text_in(self, Rect2(cr.position.x + 40.0, cr.position.y + 3.0, cr.size.x - 44.0, 22.0), str(CAT_TYPES[key]["name"]), 13, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
+			UIKit.body_in(self, Rect2(cr.position.x + 40.0, cr.position.y + 24.0, cr.size.x - 44.0, 16.0), "%d spare" % spare(key), 12, COL_AMBER if spare(key) > 0 else COL_MUTED, HORIZONTAL_ALIGNMENT_LEFT)
 		var hint := "Tap a cat above, then a tile. Tap a placed cat to pick it up."
-		draw_string(font, Vector2(FIELD.position.x, 246.0), hint, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, 12, COL_MUTED)
-		draw_string(font, Vector2(FIELD.position.x, 264.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x, 11, COL_MUTED)
+		UIKit.body_in(self, Rect2(FIELD.position.x, 236.0, FIELD.size.x, 18.0), hint, 12, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.body_in(self, Rect2(FIELD.position.x, 254.0, FIELD.size.x, 18.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", 11, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 
 	# Result banner
 	if banner_t > 0.0 and banner != "":
@@ -862,7 +868,7 @@ func _draw() -> void:
 		for n in lines.size():
 			var size := 32 if n == 0 else 14
 			var col := UIKit.AMBER if n == 0 else UIKit.CREAM
-			UIKit.text(self, Vector2(FIELD.position.x, 336.0 + (0.0 if n == 0 else 24.0 + 20.0 * float(n - 1))), lines[n], size, col, UIKit.INK, 7 if n == 0 else 4, HORIZONTAL_ALIGNMENT_CENTER, FIELD.size.x)
+			UIKit.text_in(self, Rect2(FIELD.position.x, 300.0 if n == 0 else 344.0 + 22.0 * float(n - 1), FIELD.size.x, 40.0 if n == 0 else 22.0), lines[n], size, col, UIKit.INK, 7 if n == 0 else 4, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _draw_enemy(e: Dictionary) -> void:

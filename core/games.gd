@@ -8,7 +8,7 @@ const LIST := [
 	{
 		"id": "catdrop", "title": "CAT DROP", "tagline": "Drop balls, build a cat army",
 		"scene": "res://games/catdrop/catdrop.tscn",
-		"bg": Color("#7E1236"), "fg": Color("#F2A81D"), "art": "res://games/catdrop/art/macho.png",
+		"bg": Color("#8A2A55"), "fg": Color("#FFD700"), "art": "res://games/catdrop/art/macho.png",
 	},
 	{"id": "carsort", "title": "CAR SORT", "tagline": "Coming soon", "scene": ""},
 	{"id": "", "title": "???", "tagline": "", "scene": ""},

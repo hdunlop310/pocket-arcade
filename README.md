@@ -42,6 +42,9 @@ A Godot 4 project (4.3 or newer). The app opens on the hub: a game picker with a
 - `MAX_BALLS_ALIVE`: safety cap on balls on screen at once.
 - Gravity is in Project Settings > Physics > 2D (set to 1200).
 
+## Credits
+- Fonts: Fredoka and Inter, both SIL Open Font License 1.1 (see `fonts/`).
+
 ## Notes
 - Balls collide with the board but not with each other, so big multiplied piles don't jam.
 - Everything is drawn in code for now (no art files). Real art slots in later by replacing the `_draw()` calls with sprites.

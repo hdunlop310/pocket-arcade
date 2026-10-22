@@ -3,12 +3,12 @@ extends Control
 # Games are instanced as children of `game_host` and talk to the hub through the GameBase signals.
 # Everything is built in code, like the games.
 
-const COL_BG := Color("#12151F")
-const COL_PANEL := Color("#1C2030")
-const COL_LINE := Color("#2C3248")
+const COL_BG := Color("#1E121F")
+const COL_PANEL := Color("#2A2531")
+const COL_LINE := Color("#3A3443")
 const COL_TEXT := Color("#F4F4F6")
-const COL_MUTED := Color("#8E94AB")
-const COL_ACCENT := Color("#46D9A0")
+const COL_MUTED := Color("#B3A8BD")
+const COL_ACCENT := Color("#FF2E93")
 const COL_DARK := Color("#0B0B0E")
 
 const TILE_SIZE := Vector2(171.0, 170.0)
@@ -129,18 +129,18 @@ func _build_home() -> void:
 	avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	avatar.draw.connect(_draw_avatar)
 	home.add_child(avatar)
-	level_label = _label(home, "", 22, COL_TEXT, Vector2(92.0, 14.0))
-	xp_label = _label(home, "", 13, COL_MUTED, Vector2(190.0, 24.0), 184.0, HORIZONTAL_ALIGNMENT_RIGHT)
+	level_label = UIKit.label(home, Rect2(92.0, 10.0, 150.0, 32.0), "", 22, COL_TEXT)
+	xp_label = UIKit.label(home, Rect2(190.0, 14.0, 184.0, 24.0), "", 13, COL_MUTED, HORIZONTAL_ALIGNMENT_RIGHT, false)
 	bar_back = Panel.new()
 	bar_back.position = Vector2(92.0, 52.0)
 	bar_back.size = Vector2(282.0, 26.0)
-	(bar_back as Panel).add_theme_stylebox_override("panel", UIKit.box(UIKit.INK_SOFT, UIKit.INK, 4, 13))
+	(bar_back as Panel).add_theme_stylebox_override("panel", UIKit.box(Color("#150E18"), UIKit.INK, 4, 13, 0, 4))
 	bar_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	home.add_child(bar_back)
 	bar_fill = Panel.new()
 	bar_fill.position = Vector2(96.0, 56.0)
 	bar_fill.size = Vector2(0.0, 18.0)
-	(bar_fill as Panel).add_theme_stylebox_override("panel", UIKit.box(COL_ACCENT, COL_ACCENT.darkened(0.35), 2, 9))
+	(bar_fill as Panel).add_theme_stylebox_override("panel", UIKit.pill(Color("#FFE866"), Color("#F2A81D"), Color("#7A4E00"), 9, 2))
 	bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	home.add_child(bar_fill)
 	var profile_btn := _button(home, "", Rect2(10.0, 10.0, 370.0, 80.0), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
@@ -152,8 +152,8 @@ func _build_home() -> void:
 		profile_btn.add_theme_stylebox_override(state, sb)
 	profile_btn.pressed.connect(show_achievements)
 
-	_label(home, Games.HUB_NAME.to_upper(), 34, COL_TEXT, Vector2(16.0, 98.0), 358.0)
-	_label(home, "No ads. No timers. No purchases.", 14, COL_ACCENT, Vector2(16.0, 148.0), 358.0)
+	UIKit.label(home, Rect2(16.0, 94.0, 358.0, 48.0), Games.HUB_NAME.to_upper(), 34, COL_TEXT)
+	UIKit.label(home, Rect2(16.0, 142.0, 358.0, 24.0), "No ads. No timers. No purchases.", 14, COL_ACCENT, HORIZONTAL_ALIGNMENT_LEFT, false)
 
 	for i in Games.LIST.size():
 		_build_tile(i)
@@ -184,8 +184,8 @@ func _build_tile(i: int) -> void:
 	card.draw.connect(_draw_tile.bind(card, g))
 	home.add_child(card)
 	if playable:
-		_label(card, str(g["title"]), 22, g["fg"], Vector2(0.0, 116.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
-		tile_progress[g["id"]] = _label(card, "", 12, COL_TEXT, Vector2(4.0, 146.0), r.size.x - 8.0, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.label(card, Rect2(0.0, 110.0, r.size.x, 30.0), str(g["title"]), 22, g["fg"], HORIZONTAL_ALIGNMENT_CENTER)
+		tile_progress[g["id"]] = UIKit.label(card, Rect2(4.0, 142.0, r.size.x - 8.0, 22.0), "", 12, COL_TEXT, HORIZONTAL_ALIGNMENT_CENTER, false)
 		var btn := _button(card, "", Rect2(Vector2.ZERO, r.size), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
 		btn.name = "Tile_" + str(g["id"])
 		for state in ["normal", "hover", "pressed", "disabled"]:
@@ -200,32 +200,38 @@ func _build_tile(i: int) -> void:
 		tw.tween_property(card, "scale", Vector2.ONE * 1.03, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		tw.tween_property(card, "scale", Vector2.ONE, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	elif str(g["id"]) != "":
-		_label(card, str(g["title"]), 18, COL_MUTED, Vector2(0.0, 98.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
-		_label(card, str(g["tagline"]), 13, COL_MUTED, Vector2(0.0, 128.0), r.size.x, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.label(card, Rect2(0.0, 92.0, r.size.x, 30.0), str(g["title"]), 18, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.label(card, Rect2(0.0, 124.0, r.size.x, 22.0), str(g["tagline"]), 13, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER, false)
 
 
 func _draw_tile(card: Control, g: Dictionary) -> void:
 	var rect := Rect2(Vector2.ZERO, card.size)
 	if Games.is_playable(g):
-		UIKit.panel(card, rect, g["bg"], UIKit.INK, 5, 20, 5)
+		var bg: Color = g["bg"]
+		UIKit.card(card, rect, bg.lightened(0.15), bg.darkened(0.55), UIKit.INK, 20, Color(1, 1, 1, 0.22))
 		for p in [Vector2(24.0, 24.0), Vector2(146.0, 30.0), Vector2(20.0, 100.0), Vector2(150.0, 96.0)]:
-			UIKit.paw(card, p, 7.0, Color(0.0, 0.0, 0.0, 0.18))
-		UIKit.panel(card, Rect2(35.0, 12.0, 101.0, 98.0), UIKit.CRIMSON_DARK, g["fg"], 4, 14)
+			UIKit.paw(card, p, 7.0, Color(0.0, 0.0, 0.0, 0.2))
+		UIKit.glow_rect(card, Rect2(35.0, 12.0, 101.0, 98.0), g["fg"], 14, 0.45)
+		UIKit.panel(card, Rect2(35.0, 12.0, 101.0, 98.0), UIKit.PLUM, g["fg"], 4, 14)
 		if not _tile_art.has(g["id"]):
 			_tile_art[g["id"]] = load(str(g["art"]))
 		card.draw_texture_rect(_tile_art[g["id"]], Rect2(40.0, 17.0, 91.0, 88.0), false)
 	else:
-		UIKit.panel(card, rect, Color("#1B2034"), UIKit.INK, 4, 20, 4)
-		UIKit.lock(card, Vector2(card.size.x * 0.5, 48.0 if str(g["id"]) != "" else 62.0), 15.0, Color("#3A4160"))
+		UIKit.card(card, rect, UIKit.CHARCOAL_LIGHT, Color("#201B26"), UIKit.INK, 20)
+		var named: bool = str(g["id"]) != ""
+		var c := Vector2(card.size.x * 0.5, 50.0 if named else 62.0)
+		card.draw_circle(c + Vector2(0.0, 6.0), 34.0, Color(0.0, 0.0, 0.0, 0.18))
+		UIKit.lock(card, c, 17.0, Color("#8A7F96"))
 
 
 func _draw_avatar() -> void:
 	var c := Vector2(32.0, 32.0)
 	avatar.draw_circle(c, 32.0, UIKit.INK)
-	avatar.draw_circle(c, 28.0, COL_ACCENT)
-	avatar.draw_circle(c, 23.0, UIKit.INK_SOFT)
+	avatar.draw_circle(c, 28.0, UIKit.GOLD)
+	avatar.draw_circle(c, 23.0, UIKit.PLUM)
+	avatar.draw_arc(c, 23.0, PI * 1.1, PI * 1.6, 12, Color(1, 1, 1, 0.25), 3.0)
 	var info := Profile.level_info(Profile.xp(Save.section("profile")))
-	UIKit.text(avatar, Vector2(0.0, 41.0), str(info["level"]), 26, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER, 64.0)
+	UIKit.text_in(avatar, Rect2(0.0, 0.0, 64.0, 64.0), str(info["level"]), 26, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _add_background(parent: Control) -> void:
@@ -233,13 +239,15 @@ func _add_background(parent: Control) -> void:
 	bg.size = Vector2(390.0, 844.0)
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	bg.draw.connect(func():
-		UIKit.gradient(bg, Rect2(0.0, 0.0, 390.0, 844.0), Color("#1D2340"), Color("#0C0F1D"))
+		UIKit.gradient(bg, Rect2(0.0, 0.0, 390.0, 844.0), Color("#2C1833"), UIKit.PLUM)
+		for i in 5:
+			bg.draw_circle(Vector2(195.0, 360.0), 280.0 - float(i) * 45.0, Color(UIKit.PINK, 0.012))
 		var y := 8.0
 		var row := 0
 		while y < 844.0:
 			var x := 8.0 + (13.0 if row % 2 == 1 else 0.0)
 			while x < 390.0:
-				bg.draw_circle(Vector2(x, y), 1.6, Color(1.0, 1.0, 1.0, 0.045))
+				bg.draw_circle(Vector2(x, y), 1.6, Color(1.0, 1.0, 1.0, 0.04))
 				x += 26.0
 			y += 26.0
 			row += 1)
@@ -350,8 +358,9 @@ func _open_overlay(title: String) -> Control:
 	overlay.name = "Overlay"
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	home.add_child(overlay)
+	UIKit.pop_in(overlay, 0.92, 0.25)
 	_add_background(overlay)
-	_label(overlay, title, 30, COL_TEXT, Vector2(16.0, 24.0), 358.0)
+	UIKit.label(overlay, Rect2(16.0, 18.0, 358.0, 48.0), title, 30, COL_TEXT)
 	var close := _button(overlay, "BACK", Rect2(16.0, 770.0, 358.0, 52.0), COL_ACCENT, COL_DARK, 20)
 	close.name = "CloseButton"
 	close.pressed.connect(close_overlay)
@@ -370,7 +379,7 @@ func show_achievements() -> void:
 		return
 	var o := _open_overlay("ACHIEVEMENTS")
 	var got: Array = Profile.unlocked(Save.section("profile"))
-	_label(o, "%d / %d unlocked" % [got.size(), Achievements.LIST.size()], 14, COL_ACCENT, Vector2(16.0, 66.0), 358.0)
+	UIKit.label(o, Rect2(16.0, 64.0, 358.0, 22.0), "%d / %d unlocked" % [got.size(), Achievements.LIST.size()], 14, COL_ACCENT, HORIZONTAL_ALIGNMENT_LEFT, false)
 	for i in Achievements.LIST.size():
 		var a: Dictionary = Achievements.LIST[i]
 		var done: bool = got.has(a["id"])
@@ -382,9 +391,9 @@ func show_achievements() -> void:
 		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		mark.draw.connect(_draw_mark.bind(mark, done))
 		o.add_child(mark)
-		_label(o, str(a["title"]), 18, COL_TEXT if done else COL_MUTED, Vector2(84.0, y + 10.0), 200.0)
-		_label(o, str(a["desc"]), 13, COL_MUTED, Vector2(84.0, y + 40.0), 220.0)
-		_label(o, "+%d XP" % int(a["xp"]), 14, COL_ACCENT if done else COL_MUTED, Vector2(290.0, y + 26.0), 74.0, HORIZONTAL_ALIGNMENT_RIGHT)
+		UIKit.label(o, Rect2(84.0, y + 6.0, 190.0, 30.0), str(a["title"]), 18, COL_TEXT if done else COL_MUTED)
+		UIKit.label(o, Rect2(84.0, y + 36.0, 190.0, 28.0), str(a["desc"]), 13, COL_MUTED, HORIZONTAL_ALIGNMENT_LEFT, false)
+		UIKit.label(o, Rect2(274.0, y + 4.0, 90.0, 64.0), "+%d XP" % int(a["xp"]), 14, COL_ACCENT if done else COL_MUTED, HORIZONTAL_ALIGNMENT_RIGHT, false)
 
 
 func _draw_mark(mark: Control, done: bool) -> void:

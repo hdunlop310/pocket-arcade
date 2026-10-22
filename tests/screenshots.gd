@@ -23,9 +23,11 @@ func _ready() -> void:
 	await frames(5)
 	m.coins = 520
 	m.battle.wave = 4
-	m.stats["best_wave"] = 4
+	m.stats["best_wave"] = 1   # Rosette and Adora still locked: shows the padlocks
 	m._refresh_panel()
 	await snap("1_map")
+	m.stats["best_wave"] = 4
+	m._refresh_panel()
 	m.buy_cat("rosette")
 	m.buy_cat("adora")
 	m.upgrade_cat("macho")
@@ -48,6 +50,10 @@ func _ready() -> void:
 	m._on_main_pressed()
 	await frames(3)
 	await snap("6_battle_place")
+	b.pickup(2)   # a cat in hand: empty tiles glow
+	await frames(8)
+	await snap("6b_place_glow")
+	b.place(2, "adora")
 	b.wave = 4
 	m._on_main_pressed()
 	await frames(150)
