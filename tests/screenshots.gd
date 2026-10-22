@@ -77,6 +77,23 @@ func _ready() -> void:
 	await frames(1)
 	await snap("8c_macho_attacking")
 	bt.queue_free()
+
+	# Adora running out
+	var ba = load("res://games/catdrop/battle.gd").new()
+	add_child(ba)
+	ba.owned = {"macho": 0, "rosette": 0, "adora": 1}
+	for i in 16:
+		ba.grid[i] = ""
+	ba.grid[9] = "adora"
+	ba.wave = 3
+	ba.start_wave()
+	var guard3 := 0
+	while guard3 < 3000 and not (ba.is_charging(9) and ba.cats[9]["moving"] and ba.cats[9]["y"] < ba.tile_center(9).y - 70.0):
+		ba.step(1.0 / 30.0)
+		guard3 += 1
+	await frames(2)
+	await snap("8d_adora_running")
+	ba.queue_free()
 	m.queue_free()
 	await frames(2)
 

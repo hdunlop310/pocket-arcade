@@ -3,7 +3,7 @@ extends SceneTree
 # under the cat) into a game atlas. Not needed at game time.
 #
 #   GODOT --headless --path . --script tools/extract_sheet.gd -- macho
-#   (names: macho, rosette, macho_run, adora)
+#   (names: macho, rosette, macho_run, adora, adora_run)
 #
 # Per frame: make the background transparent, delete label text and any big panel art, keep the cat (and
 # anything attached or close to it, like a muzzle flash), erase the perch tile, scale down, and place the
@@ -13,6 +13,7 @@ extends SceneTree
 #   macho:     1 idle, 2 wind-up, 3 lunge, 4 claw swipe, 5 furious bite, 6 impact, 7 retreat, 8 landing
 #   rosette:   1 idle, 2 aiming, 3 the shot, 4 recoil, 5 bolt pull, 6 bolt push, 7 target lock, 8 return to idle
 #   macho_run: 1 start, 2 front push, 3 extension, 4 front strike, 5 drive, 6 mid-stride, 7 high-speed leap, 8 landing
+#   adora_run: same layout as macho_run
 #   adora:     1 idle, 2 crouch and leap, 3 mid-air spin, 4 acrobatic slash, 5 aerial kick, 6 agile landing, 7 backflip, 8 return to idle
 #
 # bg "grey": a flat grey background that the black outline walls off from the fur (flood from the border).
@@ -33,6 +34,11 @@ const SHEETS := {
 	},
 	"macho_run": {
 		"file": "res://art_src/macho_run_sheet.webp", "out": "macho_run_anim", "bg": "red",
+		"label_bands": [Vector2i(30, 94), Vector2i(236, 264), Vector2i(478, 508), Vector2i(714, 744), Vector2i(974, 1008)],
+		"row_splits": [268, 508, 748], "col_split": 488, "min_x": 300, "max_x": 668, "border_x": 339, "anchors": {},
+	},
+	"adora_run": {
+		"file": "res://art_src/adora_run_sheet.webp", "out": "adora_run_anim", "bg": "red",
 		"label_bands": [Vector2i(30, 94), Vector2i(236, 264), Vector2i(478, 508), Vector2i(714, 744), Vector2i(974, 1008)],
 		"row_splits": [268, 508, 748], "col_split": 488, "min_x": 300, "max_x": 668, "border_x": 339, "anchors": {},
 	},
