@@ -113,6 +113,7 @@ var peg_lookup := {}        # rounded peg position -> peg position, to find the 
 var peg_fx := {}            # rounded peg position -> {t, off}: a flash and a small wobble after a hit
 var cup_dip := 0.0
 var cup_flash := 0.0        # the cup frame flashes when a ball lands          # the cup dips when it catches a ball
+var glow_layer: Node2D      # additive light halos (pegs, gates, cup, balls)
 var cup_squash := 0.0       # the cup squashes and shakes for 150ms when a ball lands
 var coin_pulse := 0.0       # the coin counter pops when coins increase
 var last_coins := 0
@@ -152,6 +153,12 @@ func _ready() -> void:
 	if ResourceLoader.exists("res://games/catdrop/art/dropper_anim.png"):
 		dropper_tex = load("res://games/catdrop/art/dropper_anim.png")
 	_build_map_panel()
+	glow_layer = Node2D.new()
+	var glow_mat := CanvasItemMaterial.new()
+	glow_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	glow_layer.material = glow_mat
+	glow_layer.draw.connect(_draw_glow)
+	add_child(glow_layer)
 	_refresh_panel()
 	_apply_state()
 	# Without a hub (editor F6, tests) load our own save; the hub calls start() itself right after adding us.
@@ -461,6 +468,7 @@ func _build_buttons() -> void:
 	main_btn.size = Vector2(284.0, 62.0)
 	main_btn.text = "PLAY WAVE 1"
 	_style_button(main_btn, COL_AMBER, COL_EDGE, 24)
+	main_btn.material = Polish.shine_material()
 	main_btn.pivot_offset = main_btn.size * 0.5
 	main_btn.pressed.connect(_on_main_pressed)
 	add_child(main_btn)
@@ -478,7 +486,7 @@ func _add_row(id_: String, title_: String, y: float, portrait: String, max_pips:
 	var card := Panel.new()
 	card.position = Vector2(10.0, y)
 	card.size = Vector2(MAP_PANEL.size.x - 20.0, ROW_H)
-	card.add_theme_stylebox_override("panel", UIKit.box(Color("#322A3B"), UIKit.INK, 3, 12, 0, 5))
+	card.add_theme_stylebox_override("panel", UIKit.baked("card_small", UIKit.BAKED_MARGIN["card_small"]) if UIKit.baked("card_small", UIKit.BAKED_MARGIN["card_small"]) != null else UIKit.box(Color("#322A3B"), UIKit.INK, 3, 12, 0, 5))
 	map_panel.add_child(card)
 
 	var text_x := 20.0
@@ -552,7 +560,7 @@ func _add_up_card(key: String, x: float, y: float) -> void:
 	var card := Panel.new()
 	card.position = Vector2(x, y)
 	card.size = Vector2(110.0, 70.0)
-	card.add_theme_stylebox_override("panel", UIKit.box(Color("#322A3B"), UIKit.INK, 3, 12, 0, 5))
+	card.add_theme_stylebox_override("panel", UIKit.baked("card_small", UIKit.BAKED_MARGIN["card_small"]) if UIKit.baked("card_small", UIKit.BAKED_MARGIN["card_small"]) != null else UIKit.box(Color("#322A3B"), UIKit.INK, 3, 12, 0, 5))
 	map_panel.add_child(card)
 	var name_label := UIKit.label(map_panel, Rect2(x + 6.0, y + 2.0, 98.0, 16.0), str(UPGRADES[key]["name"]), 12, UIKit.CREAM)
 	name_label.name = "Name"
@@ -581,7 +589,7 @@ func _build_map_panel() -> void:
 	map_panel = Panel.new()
 	map_panel.position = MAP_PANEL.position
 	map_panel.size = MAP_PANEL.size
-	map_panel.add_theme_stylebox_override("panel", UIKit.box(Color("#221B29"), UIKit.GOLD, 4, 18, 3, 14))
+	map_panel.add_theme_stylebox_override("panel", UIKit.baked("panel", UIKit.BAKED_MARGIN["panel"]) if UIKit.baked("panel", UIKit.BAKED_MARGIN["panel"]) != null else UIKit.box(Color("#221B29"), UIKit.GOLD, 4, 18, 3, 14))
 	add_child(map_panel)
 
 	team_label = UIKit.label(map_panel, Rect2(14.0, 5.0, 330.0, 16.0), "YOUR CATS", 12, UIKit.GOLD)
@@ -734,6 +742,9 @@ func _process(delta: float) -> void:
 	drop_x = 195.0 + sin(t * SWEEP_SPEED) * SWEEP_RANGE
 	shown_coins = move_toward(shown_coins, float(coins), maxf(2.0, absf(float(coins) - shown_coins) * 6.0 * delta))
 	fx.update(delta)
+	glow_layer.visible = (state == "drop")
+	if glow_layer.visible:
+		glow_layer.queue_redraw()
 	drop_anim_t += delta
 	for k in peg_fx.keys():
 		peg_fx[k]["t"] = float(peg_fx[k]["t"]) - delta
@@ -971,7 +982,7 @@ func _draw_wallpaper() -> void:
 	UIKit.gradient(self, Rect2(0.0, 0.0, 390.0, 844.0), Color("#2C1833"), UIKit.PLUM)
 	var x := -6.0
 	while x < 390.0:
-		draw_rect(Rect2(x, 0.0, 14.0, 844.0), Color(1.0, 1.0, 1.0, 0.016))
+		draw_rect(Rect2(x, 0.0, 14.0, 844.0), Color(1.0, 1.0, 1.0, 0.008))
 		x += 28.0
 	# a faint magenta glow behind the content
 	for i in 5:
@@ -1165,10 +1176,42 @@ func _draw_board() -> void:
 		var top_half := PackedVector2Array([poly[0], poly[1], poly[1].lerp(poly[2], 0.5), poly[0].lerp(poly[3], 0.5)])
 		draw_colored_polygon(top_half, Color(col, 0.20))
 		draw_polyline(poly_out, UIKit.INK, 5.5, true)
-		draw_polyline(poly_out, col.lerp(Color.WHITE, 0.35 * gflash), 3.0, true)
+		var hot := col.lerp(Color.WHITE, 0.35 * gflash)
+		draw_polyline(poly_out, Color(hot.r * 1.6, hot.g * 1.6, hot.b * 1.6, 1.0), 3.0, true)
 		UIKit.text_in(self, r, "X%d" % mult, 22, Color.WHITE, col.darkened(0.7), 5, HORIZONTAL_ALIGNMENT_CENTER)
 
 	_draw_dropper()
+
+
+func _draw_glow() -> void:
+	# Soft additive light pools: they brighten what is behind them instead of covering it.
+	for p in pegs:
+		glow_layer.draw_circle(p, 15.0, Color(1.0, 0.18, 0.58, 0.03))
+		glow_layer.draw_circle(p, 9.0, Color(1.0, 0.3, 0.65, 0.04))
+	for i in GATES.size():
+		var r: Rect2 = GATES[i]["rect"]
+		var mult := gate_mult(i)
+		var col := UIKit.CYAN
+		if mult >= 4:
+			col = UIKit.GOLD
+		elif mult == 3:
+			col = UIKit.PINK
+		var pulse := 0.5 + 0.5 * sin(t * 3.0 + float(i) * 1.3)
+		var a := 0.07 + 0.06 * pulse + 0.25 * (float(gate_flash[i]) / 0.3)
+		var gp := PackedVector2Array([
+			Vector2(r.position.x + 8.0, r.position.y), Vector2(r.end.x, r.position.y),
+			Vector2(r.end.x - 8.0, r.end.y), Vector2(r.position.x, r.end.y), Vector2(r.position.x + 8.0, r.position.y),
+		])
+		for g in 3:
+			glow_layer.draw_polyline(gp, Color(col, a * 0.9 / float(g + 1)), 10.0 + float(g) * 12.0, true)
+	var cf := cup_flash / 0.25
+	var cup_c := Vector2(CUP_SENSOR.get_center().x, 680.0)
+	var cr := Rect2(cup_c - Vector2(66.0, 30.0), Vector2(132.0, 60.0))
+	var cp := PackedVector2Array([cr.position, Vector2(cr.end.x, cr.position.y), cr.end, Vector2(cr.position.x, cr.end.y), cr.position])
+	for g in 3:
+		glow_layer.draw_polyline(cp, Color(UIKit.GOLD, (0.06 + 0.25 * cf) / float(g + 1)), 10.0 + float(g) * 12.0, true)
+	for b in get_tree().get_nodes_in_group("balls"):
+		glow_layer.draw_circle(b.position, 12.0, Color(1.0, 0.65, 0.15, 0.16))
 
 
 func _draw_hud() -> void:

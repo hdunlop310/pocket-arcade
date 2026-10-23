@@ -1,0 +1,98 @@
+{
+	"btn_gold_big": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_gold_big_down": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_gold_small": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_gold_small_down": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_green_big": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_green_big_down": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_green_small": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_green_small_down": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_grey_big": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_grey_big_down": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_grey_small": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_grey_small_down": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_magenta_big": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_magenta_big_down": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_magenta_small": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_magenta_small_down": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_steel_big": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_steel_big_down": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_steel_small": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_steel_small_down": {
+		"margin": 11,
+		"size": 40
+	},
+	"card_small": {
+		"margin": 16,
+		"size": 64
+	},
+	"coin": {
+		"margin": 0,
+		"size": 64
+	},
+	"panel": {
+		"margin": 22,
+		"size": 64
+	},
+	"pill": {
+		"margin": 28,
+		"size": 64
+	}
+}

@@ -64,7 +64,7 @@ static func body() -> Font:
 # A cached outlined rounded flat box. `lip` adds extra bottom border; `shadow` adds a soft drop shadow
 # (useful for Panel nodes; draw-time panels use panel() which layers its own shadows).
 static func box(fill: Color, border: Color = INK, bw: int = 4, radius: int = 14, lip: int = 0, shadow: int = 0) -> StyleBoxFlat:
-	var key := "%s|%s|%d|%d|%d|%d" % [fill.to_html(), border.to_html(), bw, radius, lip, shadow]
+	var key := "%s|%s|%d|%d|%d|%d" % [str(fill), str(border), bw, radius, lip, shadow]
 	if _boxes.has(key):
 		return _boxes[key]
 	var sb := StyleBoxFlat.new()
@@ -80,6 +80,48 @@ static func box(fill: Color, border: Color = INK, bw: int = 4, radius: int = 14,
 		sb.shadow_offset = Vector2(0.0, float(shadow) * 0.5)
 	_boxes[key] = sb
 	return sb
+
+
+# --- Baked UI kit (tools/bake_ui.gd -> art/ui/*.png): lit, bevelled, glossy 9-slice textures ---------
+const BAKED_MARGIN := {"big": 26, "small": 11, "panel": 22, "pill": 28, "card_small": 16}
+static var _baked := {}
+static var _coin_tex: Texture2D
+
+
+# A StyleBoxTexture for a baked image, or null if the art is missing (callers then fall back to pill()).
+static func baked(name: String, margin: int, content_bottom: float = 0.0) -> StyleBoxTexture:
+	var key := "%s|%d|%.1f" % [name, margin, content_bottom]
+	if _baked.has(key):
+		return _baked[key]
+	var path := "res://art/ui/%s.png" % name
+	if not ResourceLoader.exists(path):
+		_baked[key] = null
+		return null
+	var sb := StyleBoxTexture.new()
+	sb.texture = load(path)
+	for side in [SIDE_LEFT, SIDE_RIGHT, SIDE_TOP, SIDE_BOTTOM]:
+		sb.set_texture_margin(side, float(margin))
+	sb.content_margin_left = float(margin) * 0.5
+	sb.content_margin_right = float(margin) * 0.5
+	sb.content_margin_top = 0.0
+	sb.content_margin_bottom = content_bottom
+	_baked[key] = sb
+	return sb
+
+
+# Which baked colour family a button fill belongs to ("" if none): gold, green, magenta or steel.
+static func kit_color(fill: Color) -> String:
+	if fill.a < 0.5:
+		return ""
+	if fill.s < 0.4 and fill.v < 0.4:
+		return "steel"
+	if fill.h >= 0.06 and fill.h <= 0.16 and fill.s > 0.5:
+		return "gold"
+	if fill.h >= 0.25 and fill.h <= 0.42 and fill.s > 0.3:
+		return "green"
+	if (fill.h >= 0.82 or fill.h <= 0.03) and fill.s > 0.5:
+		return "magenta"
+	return ""
 
 
 # A rounded 9-slice box with a vertical gradient fill, an outline, a bright top edge and a darker bottom
@@ -140,6 +182,20 @@ static func style_button(btn: Button, fill: Color, text_col: Color, font_size: i
 	if outline_text:
 		btn.add_theme_color_override("font_outline_color", INK)
 		btn.add_theme_constant_override("outline_size", 6)
+	var kit := kit_color(fill)
+	if kit != "":
+		var big := btn.size.y >= 54.0
+		var cls := "big" if big else "small"
+		var m: int = BAKED_MARGIN[cls]
+		var lip_px := 6.0 if big else 3.0
+		var normal := baked("btn_%s_%s" % [kit, cls], m, lip_px)
+		if normal != null:
+			btn.add_theme_stylebox_override("normal", normal)
+			btn.add_theme_stylebox_override("hover", normal)
+			btn.add_theme_stylebox_override("pressed", baked("btn_%s_%s_down" % [kit, cls], m, 1.0))
+			btn.add_theme_stylebox_override("disabled", baked("btn_grey_%s" % cls, m, lip_px))
+			attach_press(btn)
+			return
 	var r := 14
 	if btn.size.y > 1.0:
 		r = clampi(int(btn.size.y * 0.5), 8, 26)
@@ -245,6 +301,10 @@ static func card(ci: CanvasItem, rect: Rect2, top: Color = CHARCOAL_LIGHT, botto
 	for i in 3:
 		var grow := float(3 - i) * 2.0
 		ci.draw_style_box(box(Color(0, 0, 0, 0.10 + 0.07 * float(i)), Color(0, 0, 0, 0), 0, radius + int(grow)), Rect2(rect.position + Vector2(0.0, 4.0 - float(i)), rect.size).grow(grow))
+	var tex: StyleBoxTexture = baked("pill", BAKED_MARGIN["pill"]) if radius >= 24 else baked("panel", BAKED_MARGIN["panel"])
+	if tex != null:
+		ci.draw_style_box(tex, rect)
+		return
 	ci.draw_style_box(pill(top, bottom, border, radius, 4), rect)
 	ci.draw_style_box(box(Color(0, 0, 0, 0), accent, 2, maxi(radius - 5, 4)), rect.grow(-6.0))
 
@@ -254,7 +314,7 @@ static func glow_rect(ci: CanvasItem, rect: Rect2, col: Color, radius: int = 12,
 	for i in 4:
 		var g := float(4 - i) * 2.5
 		ci.draw_style_box(box(Color(0, 0, 0, 0), Color(col, 0.07 * strength * float(i + 1)), 3, radius + int(g)), rect.grow(g))
-	ci.draw_style_box(box(Color(0, 0, 0, 0), col, 3, radius), rect)
+	ci.draw_style_box(box(Color(0, 0, 0, 0), Color(col.r * 1.7, col.g * 1.7, col.b * 1.7, col.a), 3, radius), rect)   # >1.0 so it blooms
 
 
 # Small L-shaped brackets in each corner of a rect (tactical grid accents).
@@ -293,6 +353,11 @@ static func star(ci: CanvasItem, c: Vector2, r: float, fill: Color = GOLD) -> vo
 
 
 static func coin(ci: CanvasItem, c: Vector2, r: float) -> void:
+	if _coin_tex == null and ResourceLoader.exists("res://art/ui/coin.png"):
+		_coin_tex = load("res://art/ui/coin.png")
+	if _coin_tex != null:
+		ci.draw_texture_rect(_coin_tex, Rect2(c - Vector2(r, r) * 1.08, Vector2(r, r) * 2.16), false)
+		return
 	ci.draw_circle(c, r, INK)
 	ci.draw_circle(c, r - 2.0, GOLD)
 	ci.draw_circle(c, r * 0.62, Color("#E0A800"))

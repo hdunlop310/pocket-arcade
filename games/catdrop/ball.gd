@@ -76,6 +76,6 @@ func _draw() -> void:
 	var grow := 1.0 + 0.7 * (pop_t / 0.25)
 	draw_set_transform(Vector2.ZERO, linear_velocity.angle() - global_rotation, Vector2(sx, sy) * grow)
 	draw_circle(Vector2.ZERO, RADIUS + 1.8, Color("#0B0B0E"))
-	draw_circle(Vector2.ZERO, RADIUS, Color("#F2A81D"))
-	draw_circle(Vector2(-2.0, -2.2), RADIUS * 0.42, Color("#FFE9A8"))
+	draw_circle(Vector2.ZERO, RADIUS, Color(1.55, 1.1, 0.25))
+	draw_circle(Vector2(-2.0, -2.2), RADIUS * 0.42, Color(2.0, 1.8, 1.2))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.3", "Mobile")
 [autoload]
 
 Save="*res://core/save.gd"
+Polish="*res://core/polish.gd"
 
 [display]
 
@@ -29,6 +30,8 @@ window/handheld/orientation=1
 2d/default_gravity=1200.0
 
 [rendering]
+
+viewport/hdr_2d=true
 
 renderer/rendering_method="mobile"
 environment/defaults/default_clear_color=Color(0.494, 0.071, 0.212, 1)

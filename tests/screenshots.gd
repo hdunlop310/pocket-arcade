@@ -2,11 +2,27 @@ extends Node
 # Renders PNG screenshots of the main screens. Needs a real renderer (not --headless).
 # Set SHOT_DIR to the output folder. See CLAUDE.md.
 var out := ""
+func _to_srgb(v: float) -> float:
+	v = clampf(v, 0.0, 1.0)
+	return 12.92 * v if v <= 0.0031308 else 1.055 * pow(v, 1.0 / 2.4) - 0.055
+
+
 func snap(name: String) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
+	# With HDR 2D the viewport holds linear float colour; convert to sRGB so the PNG matches what the screen shows.
+	# With HDR 2D the viewport holds linear half-float colour; convert to sRGB so the PNG matches the screen.
+	if img.get_format() == Image.FORMAT_RGBAH or img.get_format() == Image.FORMAT_RGBAF:
+		var w := img.get_width()
+		var h := img.get_height()
+		var out_img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+		for y in h:
+			for x in w:
+				var c := img.get_pixel(x, y)
+				out_img.set_pixel(x, y, Color(_to_srgb(c.r), _to_srgb(c.g), _to_srgb(c.b), 1.0))
+		img = out_img
 	img.save_png(out + "/" + name + ".png")
 	print("SHOT ", name, " ", img.get_size())
 func frames(n: int) -> void:

@@ -48,6 +48,30 @@ func _ready() -> void:
 	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(toast_box)
 	refresh()
+	if OS.get_environment("POCKET_AUTOPLAY") != "":
+		_autoplay(OS.get_environment("POCKET_AUTOPLAY").split(","))
+
+
+# Debug only: POCKET_AUTOPLAY=open,play,drop,wait2 drives the real window through a few steps (on a throwaway
+# save) so it can be screenshotted from outside. Steps: open, play (main button), drop (same), waitN (seconds).
+func _autoplay(steps: PackedStringArray) -> void:
+	Save.use_test_file("user://autoplay.cfg")
+	var slot := Save.section("catdrop")
+	slot["coins"] = 300
+	slot["wave"] = 4
+	slot["stats"] = {"balls_banked": 100, "best_wave": 4, "runs_won": 0}
+	slot["owned"] = {"macho": 1, "rosette": 1, "adora": 1}
+	slot["grid"] = ["macho", "", "adora", "", "", "", "rosette", "", "", "", "", "", "", "", "", ""]
+	refresh()
+	await get_tree().create_timer(1.0).timeout
+	for st in steps:
+		if st == "open":
+			open_game("catdrop")
+		elif st == "play" or st == "drop":
+			if game != null:
+				game._on_main_pressed()
+		elif st.begins_with("wait"):
+			await get_tree().create_timer(float(st.substr(4))).timeout
 
 
 # ----------------------------------------------------------------------------
@@ -209,6 +233,7 @@ func _draw_tile(card: Control, g: Dictionary) -> void:
 	if Games.is_playable(g):
 		var bg: Color = g["bg"]
 		UIKit.card(card, rect, bg.lightened(0.15), bg.darkened(0.55), UIKit.INK, 20, Color(1, 1, 1, 0.22))
+		UIKit.panel(card, rect.grow(-3.0), Color(bg, 0.5), Color(0, 0, 0, 0), 0, 17)
 		for p in [Vector2(24.0, 24.0), Vector2(146.0, 30.0), Vector2(20.0, 100.0), Vector2(150.0, 96.0)]:
 			UIKit.paw(card, p, 7.0, Color(0.0, 0.0, 0.0, 0.2))
 		UIKit.glow_rect(card, Rect2(35.0, 12.0, 101.0, 98.0), g["fg"], 14, 0.45)
