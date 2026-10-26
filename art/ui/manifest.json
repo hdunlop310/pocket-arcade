@@ -1,4 +1,20 @@
 {
+	"btn_cyan_big": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_cyan_big_down": {
+		"margin": 26,
+		"size": 84
+	},
+	"btn_cyan_small": {
+		"margin": 11,
+		"size": 40
+	},
+	"btn_cyan_small_down": {
+		"margin": 11,
+		"size": 40
+	},
 	"btn_gold_big": {
 		"margin": 26,
 		"size": 84
@@ -85,6 +101,10 @@
 	},
 	"coin": {
 		"margin": 0,
+		"size": 64
+	},
+	"neon_frame": {
+		"margin": 24,
 		"size": 64
 	},
 	"panel": {

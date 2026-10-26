@@ -40,6 +40,16 @@ void fragment() {
 }
 """
 
+const ROUND_SHADER := """
+shader_type canvas_item;
+uniform float radius = 0.2;
+void fragment() {
+	vec2 q = abs(UV - 0.5) - (0.5 - radius);
+	float d = length(max(q, 0.0)) - radius;
+	COLOR.a *= 1.0 - smoothstep(0.0, 0.012, d);
+}
+"""
+
 static var _shine: ShaderMaterial
 
 
@@ -51,6 +61,16 @@ static func shine_material() -> ShaderMaterial:
 		_shine = ShaderMaterial.new()
 		_shine.shader = sh
 	return _shine
+
+
+# A material that clips a texture to a rounded square (radius as a fraction of its size).
+static func rounded_material(radius: float = 0.2) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = ROUND_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("radius", radius)
+	return m
 
 
 func _ready() -> void:

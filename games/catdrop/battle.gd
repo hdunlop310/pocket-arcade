@@ -267,7 +267,7 @@ func tile_at(p: Vector2) -> int:
 
 
 func _chip_rect(slot: int) -> Rect2:
-	return Rect2(22.0 + float(slot) * 118.0, 176.0, 112.0, 44.0)
+	return Rect2(65.0 + float(slot) * 98.0, 188.0, 62.0, 60.0)
 
 
 # ----------------------------------------------------------------------------
@@ -767,19 +767,55 @@ func _draw_cat_anim(i: int, center: Vector2, dead: bool) -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+# The battlefield: a stone frame around a grassy graveyard lawn with a neon edge.
+const PANEL_POS := Vector2(20.0, 136.0)
+const PANEL_SIZE := Vector2(350.0, 137.0)
+var panel_tex: Texture2D = load("res://games/catdrop/art/ui_bottom_panel.png") if ResourceLoader.exists("res://games/catdrop/art/ui_bottom_panel.png") else null
+
+
+func _draw_field() -> void:
+	var outer := FIELD.grow(10.0)
+	for i in 3:
+		draw_style_box(UIKit.box(Color(0, 0, 0, 0.10 + 0.07 * float(i)), Color(0, 0, 0, 0), 0, 22), Rect2(outer.position + Vector2(0.0, 9.0 - 2.0 * float(i)), outer.size).grow(7.0 - 2.0 * float(i)))
+	draw_style_box(UIKit.box(Color("#3B3550"), UIKit.INK, 4, 20), outer)
+	draw_style_box(UIKit.box(Color("#1F3A2A"), UIKit.INK, 3, 12), FIELD)
+	# darker grass toward the top, mown stripes, a few tufts and gravestones
+	for k in 8:
+		var y := FIELD.position.y + float(k) * 74.0
+		draw_rect(Rect2(FIELD.position.x + 3.0, y + 3.0, FIELD.size.x - 6.0, 37.0), Color(1.0, 1.0, 1.0, 0.025 if k % 2 == 0 else 0.0))
+	draw_rect(Rect2(FIELD.position.x + 3.0, FIELD.position.y + 3.0, FIELD.size.x - 6.0, 70.0), Color(0.05, 0.0, 0.15, 0.35))
+	for g in [Vector2(34.0, 372.0), Vector2(356.0, 360.0), Vector2(180.0, 330.0)]:
+		draw_rect(Rect2(g.x - 9.0, g.y - 6.0, 18.0, 24.0), Color("#6A6478"))
+		draw_circle(g + Vector2(0.0, -6.0), 9.0, Color("#6A6478"))
+		draw_rect(Rect2(g.x - 1.5, g.y - 6.0, 3.0, 12.0), Color("#3B3550"))
+		draw_rect(Rect2(g.x - 5.0, g.y - 2.0, 10.0, 3.0), Color("#3B3550"))
+	UIKit.neon_frame(self, FIELD.grow(6.0), 0.9)
+
+
 func _draw() -> void:
 	var font := ThemeDB.fallback_font
-	UIKit.board_frame(self, FIELD, UIKit.PINK, float(Time.get_ticks_msec()) / 1000.0)
+	_draw_field()
 
 	# Lane guides
 	for c in COLS:
 		var x := column_x(c)
 		draw_dashed_line(Vector2(x, 176.0), Vector2(x, GRID_ORIGIN.y - 6.0), Color(1.0, 1.0, 1.0, 0.07), 2.0, 8.0)
 
-	# House bar
-	UIKit.text_in(self, Rect2(26.0, 141.0, 64.0, 18.0), "HOUSE", 14, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
-	_draw_hp_bar(Rect2(92.0, 144.0, 226.0, 14.0), house_hp / HOUSE_MAX, COL_PEG)
-	UIKit.text_in(self, Rect2(324.0, 141.0, 44.0, 18.0), str(int(maxf(house_hp, 0.0))), 14, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
+	# House bar: inside the stone panel while placing, a plain bar during the fight
+	if not active and panel_tex != null:
+		var pr := Rect2(PANEL_POS, PANEL_SIZE)
+		draw_texture_rect(panel_tex, pr, false)
+		var sx := PANEL_SIZE.x / 700.0
+		var bar := Rect2(PANEL_POS + Vector2(104.0, 47.0) * sx, Vector2(494.0, 28.0) * sx)
+		draw_rect(bar, Color("#3A1A40"))
+		var fill := Rect2(bar.position, Vector2(bar.size.x * clampf(house_hp / HOUSE_MAX, 0.0, 1.0), bar.size.y))
+		draw_rect(fill, Color("#F020D0"))
+		draw_rect(Rect2(fill.position, Vector2(fill.size.x, fill.size.y * 0.4)), Color(1.0, 1.0, 1.0, 0.22))
+		UIKit.text_in(self, bar, "HOUSE  %d" % int(maxf(house_hp, 0.0)), 12, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
+	else:
+		UIKit.text_in(self, Rect2(26.0, 141.0, 64.0, 18.0), "HOUSE", 14, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
+		_draw_hp_bar(Rect2(92.0, 144.0, 226.0, 14.0), house_hp / HOUSE_MAX, COL_PEG)
+		UIKit.text_in(self, Rect2(324.0, 141.0, 44.0, 18.0), str(int(maxf(house_hp, 0.0))), 14, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
 
 	# Tiles and cats
 	for i in COLS * ROWS:
@@ -789,12 +825,12 @@ func _draw() -> void:
 		var key: String = grid[i]
 		match kind:
 			"flat":
-				UIKit.panel(self, r, Color("#2C2533"), UIKit.INK, 3, 10)
+				UIKit.panel(self, r, Color("#35503A"), UIKit.INK, 3, 10)
 			"raised":
-				UIKit.panel(self, r, Color("#5A5A6C"), UIKit.INK, 3, 10, 8)
+				UIKit.panel(self, r, Color("#6A6478"), UIKit.INK, 3, 10, 8)
 				draw_rect(Rect2(r.position.x + 5.0, r.position.y + 4.0, r.size.x - 10.0, 4.0), Color("#9A9AAE"))
 			"hole":
-				UIKit.panel(self, r, Color("#16161C"), UIKit.INK, 3, 10)
+				UIKit.panel(self, r, Color("#1A1424"), UIKit.INK, 3, 10)
 				draw_rect(Rect2(r.position.x + 9.0, r.position.y + 11.0, r.size.x - 18.0, r.size.y - 20.0), Color.BLACK)
 		UIKit.corner_accents(self, r.grow(-4.0), Color(1.0, 1.0, 1.0, 0.16))
 		if not active and selected != "" and grid[i] == "" and spare(selected) > 0:
@@ -851,15 +887,13 @@ func _draw() -> void:
 			var key: String = CAT_ORDER[s]
 			var cr := _chip_rect(s)
 			var sel := selected == key
-			UIKit.card(self, cr, Color("#4A3A55") if sel else Color("#34293D"), Color("#241C2B"), UIKit.INK, 10)
 			if sel:
 				UIKit.glow_rect(self, cr, UIKit.GOLD, 10, 1.0)
-			_draw_portrait(key, Rect2(cr.position.x + 6.0, cr.position.y + 6.0, 30.0, 30.0), false)
-			UIKit.text_in(self, Rect2(cr.position.x + 40.0, cr.position.y + 3.0, cr.size.x - 44.0, 22.0), str(CAT_TYPES[key]["name"]), 13, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_LEFT)
-			UIKit.body_in(self, Rect2(cr.position.x + 40.0, cr.position.y + 24.0, cr.size.x - 44.0, 16.0), "%d spare" % spare(key), 12, COL_AMBER if spare(key) > 0 else COL_MUTED, HORIZONTAL_ALIGNMENT_LEFT)
+			_draw_portrait(key, Rect2(cr.position.x + 8.0, cr.position.y + 4.0, 46.0, 38.0), false)
+			UIKit.text_in(self, Rect2(cr.position.x, cr.position.y + 40.0, cr.size.x, 16.0), "%d spare" % spare(key), 11, UIKit.GOLD if spare(key) > 0 else COL_MUTED, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
 		var hint := "Tap a cat above, then a tile. Tap a placed cat to pick it up."
-		UIKit.body_in(self, Rect2(FIELD.position.x, 236.0, FIELD.size.x, 18.0), hint, 12, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-		UIKit.body_in(self, Rect2(FIELD.position.x, 254.0, FIELD.size.x, 18.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", 11, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.body_in(self, Rect2(FIELD.position.x, 282.0, FIELD.size.x, 18.0), hint, 12, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		UIKit.body_in(self, Rect2(FIELD.position.x, 300.0, FIELD.size.x, 18.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", 11, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 
 	# Result banner
 	if banner_t > 0.0 and banner != "":

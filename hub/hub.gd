@@ -3,17 +3,17 @@ extends Control
 # Games are instanced as children of `game_host` and talk to the hub through the GameBase signals.
 # Everything is built in code, like the games.
 
-const COL_BG := Color("#1E121F")
-const COL_PANEL := Color("#2A2531")
-const COL_LINE := Color("#3A3443")
+const COL_BG := Color("#1A0B2E")
+const COL_PANEL := Color("#2A1644")
+const COL_LINE := Color("#4B2B73")
 const COL_TEXT := Color("#F4F4F6")
-const COL_MUTED := Color("#B3A8BD")
-const COL_ACCENT := Color("#FF2E93")
+const COL_MUTED := Color("#B7A9CC")
+const COL_ACCENT := Color("#00F0FF")
 const COL_DARK := Color("#0B0B0E")
 
-const TILE_SIZE := Vector2(171.0, 170.0)
-const TILE_GAP := 16.0
-const TILES_TOP := 196.0
+const TILE_SIZE := Vector2(165.0, 224.0)
+const TILE_GAP := 20.0
+const TILES_TOP := 128.0
 
 var home: Control
 var game_host: Node
@@ -146,28 +146,28 @@ func _build_home() -> void:
 	add_child(home)
 	_add_background(home)
 
-	# Profile bar: avatar, level, XP bar. Tapping it opens the achievements.
+	# Top bar: avatar ring, level and XP, and a settings gear. Tapping the avatar or bar opens the achievements.
 	avatar = Control.new()
-	avatar.position = Vector2(16.0, 18.0)
-	avatar.size = Vector2(64.0, 64.0)
+	avatar.position = Vector2(20.0, 22.0)
+	avatar.size = Vector2(60.0, 60.0)
 	avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	avatar.draw.connect(_draw_avatar)
 	home.add_child(avatar)
-	level_label = UIKit.label(home, Rect2(92.0, 10.0, 150.0, 32.0), "", 22, COL_TEXT)
-	xp_label = UIKit.label(home, Rect2(190.0, 14.0, 184.0, 24.0), "", 13, COL_MUTED, HORIZONTAL_ALIGNMENT_RIGHT, false)
+	level_label = UIKit.label(home, Rect2(92.0, 20.0, 120.0, 20.0), "", 13, COL_TEXT)
+	xp_label = UIKit.label(home, Rect2(180.0, 20.0, 110.0, 20.0), "", 12, COL_MUTED, HORIZONTAL_ALIGNMENT_RIGHT, false)
 	bar_back = Panel.new()
-	bar_back.position = Vector2(92.0, 52.0)
-	bar_back.size = Vector2(282.0, 26.0)
-	(bar_back as Panel).add_theme_stylebox_override("panel", UIKit.box(Color("#150E18"), UIKit.INK, 4, 13, 0, 4))
+	bar_back.position = Vector2(92.0, 44.0)
+	bar_back.size = Vector2(198.0, 24.0)
+	(bar_back as Panel).add_theme_stylebox_override("panel", UIKit.box(Color("#0F0620"), UIKit.PANEL_BORDER, 2, 12, 0, 0))
 	bar_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	home.add_child(bar_back)
 	bar_fill = Panel.new()
-	bar_fill.position = Vector2(96.0, 56.0)
+	bar_fill.position = Vector2(95.0, 47.0)
 	bar_fill.size = Vector2(0.0, 18.0)
-	(bar_fill as Panel).add_theme_stylebox_override("panel", UIKit.pill(Color("#FFE866"), Color("#F2A81D"), Color("#7A4E00"), 9, 2))
+	(bar_fill as Panel).add_theme_stylebox_override("panel", UIKit.pill(Color("#7AF8FF"), Color("#00B8D9"), Color("#04495A"), 9, 2))
 	bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	home.add_child(bar_fill)
-	var profile_btn := _button(home, "", Rect2(10.0, 10.0, 370.0, 80.0), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
+	var profile_btn := _button(home, "", Rect2(14.0, 14.0, 282.0, 76.0), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
 	profile_btn.name = "ProfileButton"
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var sb := StyleBoxFlat.new()
@@ -176,24 +176,34 @@ func _build_home() -> void:
 		profile_btn.add_theme_stylebox_override(state, sb)
 	profile_btn.pressed.connect(show_achievements)
 
-	UIKit.label(home, Rect2(16.0, 94.0, 358.0, 48.0), Games.HUB_NAME.to_upper(), 34, COL_TEXT)
-	UIKit.label(home, Rect2(16.0, 142.0, 358.0, 24.0), "No ads. No timers. No purchases.", 14, COL_ACCENT, HORIZONTAL_ALIGNMENT_LEFT, false)
+	var gear_btn := _button(home, "", Rect2(322.0, 26.0, 48.0, 48.0), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
+	for st in ["normal", "hover", "pressed", "disabled"]:
+		gear_btn.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	gear_btn.name = "SettingsButton"
+	gear_btn.pressed.connect(show_settings)
+	var gear_icon := Control.new()
+	gear_icon.size = gear_btn.size
+	gear_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	gear_icon.draw.connect(func():
+		UIKit.card(gear_icon, Rect2(Vector2.ZERO, gear_icon.size).grow(-1.0), Color("#33205A"), Color("#150A28"), UIKit.INK, 14)
+		UIKit.neon_frame(gear_icon, Rect2(Vector2.ZERO, gear_icon.size), 1.4)
+		UIKit.gear(gear_icon, gear_icon.size * 0.5, 12.0, UIKit.CYAN))
+	gear_btn.add_child(gear_icon)
 
 	for i in Games.LIST.size():
 		_build_tile(i)
 
-	var settings_btn := _button(home, "SETTINGS", Rect2(16.0, 768.0, 171.0, 56.0), UIKit.INK_SOFT, COL_TEXT)
-	settings_btn.name = "SettingsButton"
-	settings_btn.pressed.connect(show_settings)
-	var trophies_btn := _button(home, "ACHIEVEMENTS", Rect2(203.0, 768.0, 171.0, 56.0), UIKit.INK_SOFT, COL_ACCENT, 17)
+	var trophies_btn := _button(home, "ACHIEVEMENTS", Rect2(85.0, 704.0, 220.0, 60.0), UIKit.AMBER, Color("#3B2400"), 20)
 	trophies_btn.name = "AchievementsButton"
 	trophies_btn.pressed.connect(show_achievements)
+	trophies_btn.material = Polish.shine_material()
+	UIKit.label(home, Rect2(20.0, 786.0, 350.0, 20.0), Games.HUB_NAME.to_upper() + "   -   no ads, no timers, no purchases", 11, Color(COL_MUTED, 0.7), HORIZONTAL_ALIGNMENT_CENTER, false)
 
 
 func _tile_rect(i: int) -> Rect2:
 	var col := i % 2
 	var row := i / 2
-	return Rect2(Vector2(16.0 + float(col) * (TILE_SIZE.x + TILE_GAP), TILES_TOP + float(row) * (TILE_SIZE.y + TILE_GAP)), TILE_SIZE)
+	return Rect2(Vector2(20.0 + float(col) * (TILE_SIZE.x + TILE_GAP), TILES_TOP + float(row) * (TILE_SIZE.y + TILE_GAP)), TILE_SIZE)
 
 
 func _build_tile(i: int) -> void:
@@ -207,56 +217,63 @@ func _build_tile(i: int) -> void:
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.draw.connect(_draw_tile.bind(card, g))
 	home.add_child(card)
+	UIKit.pop_in(card, 0.9, 0.3)
 	if playable:
-		UIKit.label(card, Rect2(0.0, 110.0, r.size.x, 30.0), str(g["title"]), 22, g["fg"], HORIZONTAL_ALIGNMENT_CENTER)
-		tile_progress[g["id"]] = UIKit.label(card, Rect2(4.0, 142.0, r.size.x - 8.0, 22.0), "", 12, COL_TEXT, HORIZONTAL_ALIGNMENT_CENTER, false)
+		UIKit.label(card, Rect2(0.0, 136.0, r.size.x, 32.0), str(g["title"]), 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+		tile_progress[g["id"]] = UIKit.label(card, Rect2(6.0, 166.0, r.size.x - 12.0, 18.0), "", 12, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER, false)
+		var art := TextureRect.new()
+		art.texture = load(str(g["art"]))
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.position = Vector2(r.size.x * 0.5 - 55.0, 16.0)
+		art.size = Vector2(110.0, 110.0)
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art.material = Polish.rounded_material(0.2)
+		card.add_child(art)
+		var play := Button.new()
+		play.text = "PLAY"
+		play.position = Vector2(r.size.x * 0.5 - 45.0, 186.0)
+		play.size = Vector2(90.0, 30.0)
+		play.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		UIKit.style_button(play, UIKit.AMBER, Color("#3B2400"), 15)
+		card.add_child(play)
 		var btn := _button(card, "", Rect2(Vector2.ZERO, r.size), Color(0.0, 0.0, 0.0, 0.0), COL_TEXT)
 		btn.name = "Tile_" + str(g["id"])
 		for state in ["normal", "hover", "pressed", "disabled"]:
 			var sb := StyleBoxFlat.new()
-			sb.bg_color = Color(1.0, 1.0, 1.0, 0.12 if state == "pressed" else 0.0)
-			sb.set_corner_radius_all(18)
+			sb.bg_color = Color(1.0, 1.0, 1.0, 0.10 if state == "pressed" else 0.0)
+			sb.set_corner_radius_all(22)
 			btn.add_theme_stylebox_override(state, sb)
 		btn.pressed.connect(open_game.bind(str(g["id"])))
 		tile_buttons[g["id"]] = btn
 		# The playable tile breathes gently so it reads as the thing to tap
 		var tw := create_tween().set_loops()
-		tw.tween_property(card, "scale", Vector2.ONE * 1.03, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tw.tween_property(card, "scale", Vector2.ONE, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	elif str(g["id"]) != "":
-		UIKit.label(card, Rect2(0.0, 92.0, r.size.x, 30.0), str(g["title"]), 18, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-		UIKit.label(card, Rect2(0.0, 124.0, r.size.x, 22.0), str(g["tagline"]), 13, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER, false)
+		tw.tween_property(card, "scale", Vector2.ONE * 1.025, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(card, "scale", Vector2.ONE, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	else:
+		UIKit.label(card, Rect2(10.0, 118.0, r.size.x - 20.0, 56.0), "COMING\nSOON", 20, Color(COL_MUTED, 0.75), HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _draw_tile(card: Control, g: Dictionary) -> void:
 	var rect := Rect2(Vector2.ZERO, card.size)
-	if Games.is_playable(g):
+	var playable := Games.is_playable(g)
+	# dark glassy panel under a glowing neon frame
+	UIKit.card(card, rect.grow(-2.0), Color("#33205A") if playable else Color("#241540"), Color("#150A28"), UIKit.INK, 22)
+	UIKit.neon_frame(card, rect, 1.6 if playable else 0.55)
+	if playable:
 		var bg: Color = g["bg"]
-		UIKit.card(card, rect, bg.lightened(0.15), bg.darkened(0.55), UIKit.INK, 20, Color(1, 1, 1, 0.22))
-		UIKit.panel(card, rect.grow(-3.0), Color(bg, 0.5), Color(0, 0, 0, 0), 0, 17)
-		for p in [Vector2(24.0, 24.0), Vector2(146.0, 30.0), Vector2(20.0, 100.0), Vector2(150.0, 96.0)]:
-			UIKit.paw(card, p, 7.0, Color(0.0, 0.0, 0.0, 0.2))
-		UIKit.glow_rect(card, Rect2(35.0, 12.0, 101.0, 98.0), g["fg"], 14, 0.45)
-		UIKit.panel(card, Rect2(35.0, 12.0, 101.0, 98.0), UIKit.PLUM, g["fg"], 4, 14)
-		if not _tile_art.has(g["id"]):
-			_tile_art[g["id"]] = load(str(g["art"]))
-		card.draw_texture_rect(_tile_art[g["id"]], Rect2(40.0, 17.0, 91.0, 88.0), false)
+		UIKit.panel(card, Rect2(18.0, 18.0, rect.size.x - 36.0, 108.0), Color(bg, 0.35), Color(0, 0, 0, 0), 0, 16)
 	else:
-		UIKit.card(card, rect, UIKit.CHARCOAL_LIGHT, Color("#201B26"), UIKit.INK, 20)
-		var named: bool = str(g["id"]) != ""
-		var c := Vector2(card.size.x * 0.5, 50.0 if named else 62.0)
-		card.draw_circle(c + Vector2(0.0, 6.0), 34.0, Color(0.0, 0.0, 0.0, 0.18))
-		UIKit.lock(card, c, 17.0, Color("#8A7F96"))
+		UIKit.lock(card, Vector2(rect.size.x * 0.5, 80.0), 17.0, Color("#6E5C8C"))
 
 
 func _draw_avatar() -> void:
-	var c := Vector2(32.0, 32.0)
-	avatar.draw_circle(c, 32.0, UIKit.INK)
-	avatar.draw_circle(c, 28.0, UIKit.GOLD)
-	avatar.draw_circle(c, 23.0, UIKit.PLUM)
-	avatar.draw_arc(c, 23.0, PI * 1.1, PI * 1.6, 12, Color(1, 1, 1, 0.25), 3.0)
+	var c := Vector2(30.0, 30.0)
+	avatar.draw_circle(c, 30.0, Color(UIKit.CYAN.r * 1.5, UIKit.CYAN.g * 1.5, UIKit.CYAN.b * 1.5))
+	avatar.draw_circle(c, 26.5, UIKit.INK)
+	avatar.draw_circle(c, 24.0, Color("#2A1650"))
 	var info := Profile.level_info(Profile.xp(Save.section("profile")))
-	UIKit.text_in(avatar, Rect2(0.0, 0.0, 64.0, 64.0), str(info["level"]), 26, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
+	UIKit.text_in(avatar, Rect2(0.0, 0.0, 60.0, 60.0), str(info["level"]), 24, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _add_background(parent: Control) -> void:
@@ -264,18 +281,11 @@ func _add_background(parent: Control) -> void:
 	bg.size = Vector2(390.0, 844.0)
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	bg.draw.connect(func():
-		UIKit.gradient(bg, Rect2(0.0, 0.0, 390.0, 844.0), Color("#2C1833"), UIKit.PLUM)
-		for i in 5:
-			bg.draw_circle(Vector2(195.0, 360.0), 280.0 - float(i) * 45.0, Color(UIKit.PINK, 0.012))
-		var y := 8.0
-		var row := 0
-		while y < 844.0:
-			var x := 8.0 + (13.0 if row % 2 == 1 else 0.0)
-			while x < 390.0:
-				bg.draw_circle(Vector2(x, y), 1.6, Color(1.0, 1.0, 1.0, 0.04))
-				x += 26.0
-			y += 26.0
-			row += 1)
+		bg.draw_rect(Rect2(0.0, 0.0, 390.0, 844.0), Color("#0D0518"))
+		# a soft radial glow: stacked discs from dark to a deep purple in the middle
+		for i in 16:
+			var f := float(i) / 15.0
+			bg.draw_circle(Vector2(195.0, 360.0), 560.0 - f * 520.0, Color("#2A1254").lerp(Color("#0D0518"), 1.0 - f).darkened(0.0) if false else Color(0.17, 0.07, 0.33, 0.045)))
 	parent.add_child(bg)
 
 
@@ -284,7 +294,7 @@ func refresh() -> void:
 	var info := Profile.level_info(Profile.xp(prof))
 	level_label.text = "LEVEL %d" % int(info["level"])
 	xp_label.text = "%d / %d XP" % [int(info["into"]), int(info["need"])]
-	var fill_w: float = (bar_back.size.x - 8.0) * float(info["into"]) / float(info["need"])
+	var fill_w: float = (bar_back.size.x - 6.0) * float(info["into"]) / float(info["need"])
 	bar_fill.visible = fill_w > 0.5
 	bar_fill.size.x = maxf(fill_w, 18.0)
 	avatar.queue_redraw()

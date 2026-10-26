@@ -11,7 +11,8 @@ const LIGHT := Vector3(-0.35, -0.75, 0.55)
 
 # colour sets for buttons: face top, face bottom
 const BUTTONS := {
-	"gold": [Color("#FFD84A"), Color("#E8920B")],
+	"gold": [Color("#FFE24D"), Color("#E0A800")],
+	"cyan": [Color("#6AF7FF"), Color("#0AA6C9")],
 	"green": [Color("#7BE06E"), Color("#2E9A3E")],
 	"magenta": [Color("#FF5DB0"), Color("#C4146E")],
 	"steel": [Color("#4A3F55"), Color("#241B2B")],
@@ -124,6 +125,30 @@ func bake_panel(size: int, r: float, top: Color, bottom: Color, border: Color) -
 	return img
 
 
+# A neon tile frame: an outer stroke, a dark gap and a thinner inner stroke, shaded cyan at the top to magenta
+# at the bottom, with a transparent middle (drawn over a panel, modulated above 1.0 so it blooms).
+func bake_neon_frame(size: int, r: float) -> Image:
+	var body := Vector2(float(size), float(size))
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var cyan := Color("#27E1F2")
+	var magenta := Color("#E040FB")
+	for y in size:
+		for x in size:
+			var p := Vector2(float(x) + 0.5, float(y) + 0.5)
+			var d := rr_dist(p, body, r)
+			var depth := -d
+			var a := 0.0
+			if depth >= -0.5 and depth <= 4.5:
+				a = clampf(minf(depth + 0.5, 4.5 - depth), 0.0, 1.0)
+			elif depth >= 8.0 and depth <= 10.0:
+				a = 0.75 * clampf(minf(depth - 7.5, 10.5 - depth), 0.0, 1.0)
+			if a <= 0.0:
+				continue
+			var c := cyan.lerp(magenta, smooth(0.25, 0.8, float(y) / float(size)))
+			img.set_pixel(x, y, Color(c, a))
+	return img
+
+
 # A lit gold coin: outline, a raised rim, a recessed face with a small inner ring.
 func bake_coin(size: int) -> Image:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
@@ -181,9 +206,10 @@ func _init() -> void:
 			var m := int(SIZES[size_name]["r"])
 			save(bake_button(size_name, cols[0], cols[1], false, false), "btn_%s_%s" % [key, size_name], m)
 			save(bake_button(size_name, cols[0], cols[1], true, false), "btn_%s_%s_down" % [key, size_name], m)
-	save(bake_panel(64, 18.0, Color("#3A2A44"), Color("#22172A"), INK), "panel", 22)
-	save(bake_panel(64, 28.0, Color("#40304A"), Color("#1D1424"), INK), "pill", 28)
-	save(bake_panel(64, 14.0, Color("#44324E"), Color("#2A1D33"), INK), "card_small", 16)
+	save(bake_panel(64, 18.0, Color("#3A2262"), Color("#22103F"), INK), "panel", 22)
+	save(bake_panel(64, 28.0, Color("#40266A"), Color("#1D0F36"), INK), "pill", 28)
+	save(bake_panel(64, 14.0, Color("#47296F"), Color("#2A1647"), INK), "card_small", 16)
+	save(bake_neon_frame(64, 22.0), "neon_frame", 24)
 	save(bake_coin(64), "coin", 0)
 	var f := FileAccess.open(ProjectSettings.globalize_path(OUT_DIR + "/manifest.json"), FileAccess.WRITE)
 	f.store_string(JSON.stringify(manifest, "\t"))

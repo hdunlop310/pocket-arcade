@@ -35,7 +35,7 @@ func _ready() -> void:
 	await frames(3)
 	var b = m.battle
 
-	check("starts on the map, battle hidden, upgrade panel shown", m.state == "map" and not b.visible and m.map_panel.visible)
+	check("starts on the map, battle hidden, bottom bar shown", m.state == "map" and not b.visible and m.map_bar.visible)
 	check("new game: 1 Macho owned and placed on tile 0", b.owned["macho"] == 1 and b.grid[0] == "macho" and b.owned["rosette"] == 0)
 	check("map panel has rows for 3 cats and 3 upgrades", m.map_rows.size() == 6)
 	check("map button reads PLAY WAVE 1 and HUB is shown", m.main_btn.text == "PLAY WAVE 1" and m.home_btn.visible)
@@ -105,8 +105,8 @@ func _ready() -> void:
 	check("the drop does nothing from the map", m.dropped == false and m.balls_left == 5)
 	m._on_main_pressed()
 	await frames(2)
-	check("PLAY moves to the drop board with a full set of balls", m.state == "drop" and m.balls_left == 5 and not m.map_panel.visible and not m.home_btn.visible)
-	check("button reads DROP ALL BALLS", m.main_btn.text == "DROP ALL BALLS" and not m.main_btn.disabled)
+	check("PLAY moves to the drop board with a full set of balls", m.state == "drop" and m.balls_left == 5 and not m.map_bar.visible and not m.home_btn.visible)
+	check("button reads DROP (5)", m.main_btn.text == "DROP (5)" and not m.main_btn.disabled)
 	var coins_before_drop: int = m.coins
 	m._on_main_pressed()
 	await frames(3)
@@ -143,7 +143,7 @@ func _ready() -> void:
 	check("a cleared wave heads back to the map", m.returning and m.state == "battle")
 	b.banner_t = 0.0
 	await frames(3)
-	check("after the banner the game returns to the map", m.state == "map" and m.map_panel.visible and not b.visible)
+	check("after the banner the game returns to the map", m.state == "map" and m.map_bar.visible and not b.visible)
 	check("map button reads PLAY WAVE 2", m.main_btn.text == "PLAY WAVE 2")
 
 	# Bonus balls join the next round's drop, and are only spent when dropped

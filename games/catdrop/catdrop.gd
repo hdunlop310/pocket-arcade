@@ -59,11 +59,11 @@ const FIELD := Rect2(16.0, 130.0, 358.0, 590.0)
 const CUP_WALL_LEFT := Rect2(131.0, 650.0, 6.0, 56.0)
 const CUP_WALL_RIGHT := Rect2(253.0, 650.0, 6.0, 56.0)
 const CUP_SENSOR := Rect2(137.0, 656.0, 116.0, 46.0)
-const MAP_PANEL := Rect2(16.0, 392.0, 358.0, 330.0)
+const MAP_PANEL := Rect2(16.0, 150.0, 358.0, 330.0)   # the upgrade sheet
 const ROW_STEP := 58.0
 const ROW_H := 54.0
-const PATH_TOP := 184.0
-const PATH_BOTTOM := 362.0
+const PATH_TOP := 150.0
+const PATH_BOTTOM := 585.0
 
 # Each gate multiplies any ball that falls through it.
 const GATES := [
@@ -78,7 +78,7 @@ const GATES := [
 const COL_BG := Color("#1E121F")
 const COL_FIELD := Color("#101015")
 const COL_EDGE := Color("#0B0B0E")
-const COL_PEG := Color("#FF2E93")
+const COL_PEG := Color("#27E1F2")
 const COL_AMBER := Color("#F2A81D")
 const COL_TEXT := Color("#F4F4F6")
 const COL_MUTED := Color("#A6A6B2")
@@ -106,6 +106,12 @@ var map_panel: Panel
 var map_rows := {}  # "cat:macho" / "up:balls" -> {"desc", "pips", "buy", "lvl", "badge"}
 var fx := Fx.new()
 var team_label: Label
+var map_bg: Texture2D
+var drop_bg: Texture2D
+var map_bar: Panel           # the bottom bar on the map: caption and the cat cards
+var map_caption: Label
+var map_cards := {}          # cat key or "board" -> {btn, badge, lock, alert}
+var sheet_dim: Button        # dims the map behind the upgrade sheet; tapping it closes the sheet
 var shown_coins := 0.0      # the coin counter counts up towards `coins`
 var shake := 0.0
 var shaking := false
@@ -464,21 +470,34 @@ func _make_label(text: String, size: int, color: Color, heavy: bool = false) -> 
 
 func _build_buttons() -> void:
 	main_btn = Button.new()
-	main_btn.position = Vector2(16.0, 756.0)
-	main_btn.size = Vector2(284.0, 62.0)
+	main_btn.position = Vector2(65.0, 746.0)
+	main_btn.size = Vector2(260.0, 62.0)
 	main_btn.text = "PLAY WAVE 1"
-	_style_button(main_btn, COL_AMBER, COL_EDGE, 24)
+	_style_button(main_btn, COL_AMBER, Color("#3B2400"), 24)
 	main_btn.material = Polish.shine_material()
 	main_btn.pivot_offset = main_btn.size * 0.5
 	main_btn.pressed.connect(_on_main_pressed)
 	add_child(main_btn)
 
+	# the back arrow (top-left on the map): a neon-framed square with a chevron
 	home_btn = Button.new()
-	home_btn.position = Vector2(308.0, 756.0)
-	home_btn.size = Vector2(66.0, 62.0)
-	home_btn.text = "HUB"
-	_style_button(home_btn, UIKit.INK_SOFT, COL_AMBER, 18)
+	home_btn.position = Vector2(20.0, 20.0)
+	home_btn.size = Vector2(48.0, 48.0)
+	for st in ["normal", "hover", "pressed", "disabled"]:
+		home_btn.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	home_btn.focus_mode = Control.FOCUS_NONE
 	home_btn.pressed.connect(func(): quit_requested.emit())
+	var arrow := Control.new()
+	arrow.size = home_btn.size
+	arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arrow.draw.connect(func():
+		UIKit.card(arrow, Rect2(Vector2.ZERO, arrow.size).grow(-1.0), Color("#33205A"), Color("#150A28"), UIKit.INK, 14)
+		UIKit.neon_frame(arrow, Rect2(Vector2.ZERO, arrow.size), 1.4)
+		var c := arrow.size * 0.5
+		var pts := PackedVector2Array([c + Vector2(5.0, -11.0), c + Vector2(-6.0, 0.0), c + Vector2(5.0, 11.0)])
+		arrow.draw_polyline(pts, UIKit.INK, 9.0, true)
+		arrow.draw_polyline(pts, Color(UIKit.CYAN.r * 1.5, UIKit.CYAN.g * 1.5, UIKit.CYAN.b * 1.5), 5.0, true))
+	home_btn.add_child(arrow)
 	add_child(home_btn)
 
 
@@ -586,15 +605,58 @@ func _add_up_card(key: String, x: float, y: float) -> void:
 
 
 func _build_map_panel() -> void:
+	# --- the bottom bar: story caption and four cards (three cats and the board) ---------------------------
+	map_bar = Panel.new()
+	map_bar.position = Vector2(20.0, 618.0)
+	map_bar.size = Vector2(350.0, 150.0)
+	var bar_style := UIKit.baked("panel", UIKit.BAKED_MARGIN["panel"])
+	map_bar.add_theme_stylebox_override("panel", bar_style if bar_style != null else UIKit.box(Color("#2A1644"), UIKit.INK, 3, 18))
+	add_child(map_bar)
+	var bar_frame := Control.new()
+	bar_frame.size = map_bar.size
+	bar_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar_frame.draw.connect(func(): UIKit.neon_frame(bar_frame, Rect2(Vector2.ZERO, bar_frame.size), 1.3))
+	map_bar.add_child(bar_frame)
+	map_caption = UIKit.label(map_bar, Rect2(18.0, 8.0, 314.0, 38.0), "", 12, UIKit.CREAM, HORIZONTAL_ALIGNMENT_CENTER, false)
+	map_caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var x := 12.0
+	for key in battle.CAT_ORDER:
+		_add_card(key, Vector2(x, 50.0))
+		x += 82.0
+	_add_card("board", Vector2(x, 50.0))
+	# the play and back buttons sit above the bar
+	move_child(main_btn, get_child_count() - 1)
+	move_child(home_btn, get_child_count() - 1)
+
+	# --- the upgrade sheet (the old inline panel), opened from the cards -----------------------------------------
+	sheet_dim = Button.new()
+	sheet_dim.position = Vector2.ZERO
+	sheet_dim.size = Vector2(390.0, 844.0)
+	for st in ["normal", "hover", "pressed", "disabled"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.03, 0.0, 0.08, 0.7)
+		sheet_dim.add_theme_stylebox_override(st, sb)
+	sheet_dim.focus_mode = Control.FOCUS_NONE
+	sheet_dim.visible = false
+	sheet_dim.pressed.connect(_close_sheet)
+	add_child(sheet_dim)
+
 	map_panel = Panel.new()
 	map_panel.position = MAP_PANEL.position
 	map_panel.size = MAP_PANEL.size
-	map_panel.add_theme_stylebox_override("panel", UIKit.baked("panel", UIKit.BAKED_MARGIN["panel"]) if UIKit.baked("panel", UIKit.BAKED_MARGIN["panel"]) != null else UIKit.box(Color("#221B29"), UIKit.GOLD, 4, 18, 3, 14))
+	map_panel.add_theme_stylebox_override("panel", bar_style if bar_style != null else UIKit.box(Color("#2A1644"), UIKit.INK, 3, 18))
+	map_panel.visible = false
 	add_child(map_panel)
 
-	team_label = UIKit.label(map_panel, Rect2(14.0, 5.0, 330.0, 16.0), "YOUR CATS", 12, UIKit.GOLD)
+	team_label = UIKit.label(map_panel, Rect2(14.0, 5.0, 300.0, 16.0), "YOUR CATS", 12, UIKit.GOLD)
 	team_label.name = "TeamLabel"
-	pass
+	var close_btn := Button.new()
+	close_btn.position = Vector2(MAP_PANEL.size.x - 40.0, 3.0)
+	close_btn.size = Vector2(32.0, 18.0)
+	close_btn.text = "X"
+	_style_button(close_btn, UIKit.GRAY, UIKit.CREAM, 11)
+	close_btn.pressed.connect(_close_sheet)
+	map_panel.add_child(close_btn)
 	for i in battle.CAT_ORDER.size():
 		var key: String = battle.CAT_ORDER[i]
 		var def: Dictionary = battle.CAT_TYPES[key]
@@ -607,12 +669,87 @@ func _build_map_panel() -> void:
 	var up_y := 22.0 + float(battle.CAT_ORDER.size()) * ROW_STEP
 	var up_heading := UIKit.label(map_panel, Rect2(14.0, up_y - 7.0, 330.0, 16.0), "BOARD UPGRADES", 12, UIKit.GOLD)
 	up_heading.name = "UpHeading"
-	pass
 	for i in UPGRADE_ORDER.size():
 		var key: String = UPGRADE_ORDER[i]
 		_add_up_card(key, 10.0 + float(i) * 115.0, up_y + 16.0)
 		var up_btn: Button = map_rows["up:" + key]["buy"]
 		up_btn.pressed.connect(func(): buy(key))
+
+
+# One card in the bottom bar: a rounded portrait (or the board icon), a level badge, a padlock when locked,
+# and a green arrow when something can be bought or levelled up.
+func _add_card(key: String, pos: Vector2) -> void:
+	var btn := Button.new()
+	btn.position = pos
+	btn.size = Vector2(76.0, 84.0)
+	btn.focus_mode = Control.FOCUS_NONE
+	var st := UIKit.baked("card_small", UIKit.BAKED_MARGIN["card_small"])
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		btn.add_theme_stylebox_override(state, st if st != null else UIKit.box(Color("#3A2262"), UIKit.INK, 3, 12))
+	btn.pressed.connect(_open_sheet)
+	UIKit.attach_press(btn)
+	map_bar.add_child(btn)
+	var badge: Label = null
+	var lock := Control.new()
+	lock.size = btn.size
+	lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lock.visible = false
+	if key == "board":
+		var icon := Control.new()
+		icon.position = Vector2(8.0, 6.0)
+		icon.size = Vector2(60.0, 56.0)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.draw.connect(func():
+			for r in 3:
+				for c in 2 + (r % 2):
+					var px := 30.0 + (float(c) - float(1 + (r % 2)) * 0.5 + 0.5) * 18.0
+					icon.draw_circle(Vector2(px, 12.0 + float(r) * 13.0), 3.6, Color(UIKit.CYAN.r * 1.5, UIKit.CYAN.g * 1.5, UIKit.CYAN.b * 1.5))
+			icon.draw_circle(Vector2(30.0, 50.0), 7.0, UIKit.INK)
+			icon.draw_circle(Vector2(30.0, 50.0), 5.5, Color(1.6, 1.15, 0.3)))
+		btn.add_child(icon)
+	else:
+		var pic := TextureRect.new()
+		pic.texture = load("res://games/catdrop/art/%s.png" % key)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		pic.position = Vector2(8.0, 6.0)
+		pic.size = Vector2(60.0, 56.0)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pic.material = Polish.rounded_material(0.18)
+		btn.add_child(pic)
+		badge = UIKit.label(btn, Rect2(40.0, 4.0, 32.0, 15.0), "", 10, UIKit.INK, HORIZONTAL_ALIGNMENT_CENTER, false)
+		badge.add_theme_stylebox_override("normal", UIKit.box(UIKit.GOLD, UIKit.INK, 2, 7))
+		badge.add_theme_font_override("font", UIKit.heavy())
+	var name_text := "BOARD" if key == "board" else str(battle.CAT_TYPES[key]["name"])
+	UIKit.label(btn, Rect2(0.0, 64.0, 76.0, 16.0), name_text, 11, UIKit.CREAM, HORIZONTAL_ALIGNMENT_CENTER)
+	lock.draw.connect(func():
+		lock.draw_style_box(UIKit.box(Color(0.05, 0.02, 0.12, 0.78), Color(0, 0, 0, 0), 0, 12), Rect2(Vector2(4.0, 4.0), lock.size - Vector2(8.0, 8.0)))
+		UIKit.lock(lock, Vector2(38.0, 30.0), 10.0, UIKit.MUTED))
+	btn.add_child(lock)
+	var alert := Control.new()
+	alert.position = Vector2(2.0, 2.0)
+	alert.size = Vector2(22.0, 22.0)
+	alert.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	alert.visible = false
+	alert.draw.connect(func():
+		alert.draw_circle(Vector2(11.0, 11.0), 11.0, UIKit.INK)
+		alert.draw_circle(Vector2(11.0, 11.0), 9.0, UIKit.GREEN)
+		UIKit.arrow_up(alert, Vector2(11.0, 11.0), 6.0, Color.WHITE))
+	btn.add_child(alert)
+	map_cards[key] = {"btn": btn, "badge": badge, "lock": lock, "alert": alert}
+
+
+func _open_sheet() -> void:
+	if state != "map":
+		return
+	sheet_dim.visible = true
+	map_panel.visible = true
+	UIKit.pop_in(map_panel, 0.9, 0.22)
+
+
+func _close_sheet() -> void:
+	sheet_dim.visible = false
+	map_panel.visible = false
 
 
 func _desc_for(key: String) -> String:
@@ -629,7 +766,22 @@ func _desc_for(key: String) -> String:
 func _refresh_panel() -> void:
 	if map_panel == null:
 		return
-	team_label.text = "YOUR CATS   team %d/%d  (clear waves to grow it)" % [team_size(), team_cap()]
+	team_label.text = "YOUR CATS   team %d/%d" % [team_size(), team_cap()]
+	var caption := "WAVE %d   %s" % [battle.wave, STORY[clampi(battle.wave - 1, 0, STORY.size() - 1)]]
+	if bonus_balls > 0:
+		caption += "   (+%d bonus balls)" % bonus_balls
+	map_caption.text = caption
+	var any_board := false
+	for ukey in UPGRADE_ORDER:
+		if not is_maxed(ukey) and coins >= upgrade_cost(ukey):
+			any_board = true
+	for ckey in battle.CAT_ORDER:
+		var cc: Dictionary = map_cards[ckey]
+		(cc["badge"] as Label).text = "Lv %d" % int(battle.cat_levels[ckey])
+		(cc["lock"] as Control).visible = not cat_unlocked(ckey)
+		var can_up: bool = cat_unlocked(ckey) and ((battle.can_level(ckey) and coins >= battle.level_cost(ckey)) or (battle.can_add_cat(ckey) and team_size() < team_cap() and coins >= battle.cat_cost(ckey)))
+		(cc["alert"] as Control).visible = can_up
+	(map_cards["board"]["alert"] as Control).visible = any_board
 
 	for key in battle.CAT_ORDER:
 		var row: Dictionary = map_rows["cat:" + key]
@@ -690,11 +842,39 @@ func _refresh_panel() -> void:
 # Game flow: map -> drop (once) -> battle -> map
 # ----------------------------------------------------------------------------
 
+# On the battle screen the main button wears the ornate winged START WAVE art; elsewhere the baked gold kit.
+func _skin_main(ornate: bool) -> void:
+	if ornate and ResourceLoader.exists("res://games/catdrop/art/ui_start_button.png"):
+		var tex: Texture2D = load("res://games/catdrop/art/ui_start_button.png")
+		for st in ["normal", "hover", "pressed", "disabled"]:
+			var sb := StyleBoxTexture.new()
+			sb.texture = tex
+			sb.modulate_color = Color(0.62, 0.62, 0.7) if st == "disabled" else (Color(0.85, 0.8, 0.75) if st == "pressed" else Color.WHITE)
+			main_btn.add_theme_stylebox_override(st, sb)
+		main_btn.add_theme_color_override("font_color", Color("#3B2400"))
+		main_btn.add_theme_color_override("font_hover_color", Color("#3B2400"))
+		main_btn.add_theme_color_override("font_pressed_color", Color("#3B2400"))
+		main_btn.add_theme_color_override("font_disabled_color", Color("#40384F"))
+		main_btn.set_meta("ornate", true)
+	elif main_btn.has_meta("ornate"):
+		main_btn.remove_meta("ornate")
+		_style_button(main_btn, COL_AMBER, Color("#3B2400"), 24)
+
+
 func _apply_state() -> void:
 	battle.visible = (state == "battle")
-	map_panel.visible = (state == "map")
+	map_bar.visible = (state == "map")
+	if state != "map":
+		_close_sheet()
 	home_btn.visible = (state == "map")
-	main_btn.size.x = 284.0 if state == "map" else 358.0
+	if state == "map":
+		main_btn.position = Vector2(65.0, 746.0)
+		main_btn.size = Vector2(260.0, 62.0)
+	else:
+		main_btn.position = Vector2(20.0, 756.0)
+		main_btn.size = Vector2(350.0, 62.0)
+	_skin_main(state == "battle")
+	main_btn.pivot_offset = main_btn.size * 0.5
 
 
 func _go_map() -> void:
@@ -704,7 +884,7 @@ func _go_map() -> void:
 	round_over = false
 	_refresh_panel()
 	_apply_state()
-	UIKit.pop_in(map_panel, 0.94, 0.25)
+	UIKit.pop_in(map_bar, 0.94, 0.25)
 	_save_game()
 
 
@@ -801,7 +981,7 @@ func _process(delta: float) -> void:
 				main_btn.text = "DROPPING..."
 				main_btn.disabled = true
 			else:
-				main_btn.text = "DROP ALL BALLS"
+				main_btn.text = "DROP (%d)" % balls_left
 				main_btn.disabled = false
 		"battle":
 			if battle.active:
@@ -961,7 +1141,7 @@ func _on_run_failed() -> void:
 func _path_point(n: int) -> Vector2:
 	# Node n (1..10) climbs from the bottom of the map to the boss at the top, wiggling left and right.
 	var frac := float(n - 1) / float(battle.MAX_WAVE - 1)
-	return Vector2(195.0 + sin(float(n) * 1.25) * 100.0, lerpf(PATH_BOTTOM, PATH_TOP, frac))
+	return Vector2(195.0 + sin(float(n) * 1.25 + 0.6) * 112.0, lerpf(PATH_BOTTOM, PATH_TOP, frac))
 
 
 func _build_path() -> void:
@@ -979,95 +1159,89 @@ func _build_path() -> void:
 
 
 func _draw_wallpaper() -> void:
-	UIKit.gradient(self, Rect2(0.0, 0.0, 390.0, 844.0), Color("#2C1833"), UIKit.PLUM)
-	var x := -6.0
-	while x < 390.0:
-		draw_rect(Rect2(x, 0.0, 14.0, 844.0), Color(1.0, 1.0, 1.0, 0.008))
-		x += 28.0
-	# a faint magenta glow behind the content
-	for i in 5:
-		draw_circle(Vector2(195.0, 300.0), 260.0 - float(i) * 40.0, Color(UIKit.PINK, 0.012))
+	draw_rect(Rect2(0.0, 0.0, 390.0, 844.0), Color("#0D0518"))
+	if state == "drop":
+		if drop_bg == null and ResourceLoader.exists("res://games/catdrop/art/drop_bg.png"):
+			drop_bg = load("res://games/catdrop/art/drop_bg.png")
+		if drop_bg != null:
+			var ts := drop_bg.get_size()
+			var sw := ts.y * 390.0 / 844.0
+			draw_texture_rect_region(drop_bg, Rect2(0.0, 0.0, 390.0, 844.0), Rect2((ts.x - sw) * 0.5, 0.0, sw, ts.y))
+			return
+	# a soft radial glow: stacked discs, deep purple in the middle
+	for i in 16:
+		var f := float(i) / 15.0
+		draw_circle(Vector2(195.0, 380.0), 560.0 - f * 520.0, Color(0.17, 0.07, 0.33, 0.045))
 
 
-func _draw_cheese(c: Vector2, s: float) -> void:
-	var pts := PackedVector2Array([c + Vector2(-1.0, 0.6) * s, c + Vector2(1.0, 0.6) * s, c + Vector2(1.0, -0.2) * s, c + Vector2(-1.0, -0.9) * s])
-	var outline: PackedVector2Array = pts.duplicate()
-	outline.append(pts[0])
-	draw_colored_polygon(pts, Color("#F2C230"))
-	draw_polyline(outline, UIKit.INK, 3.0, true)
-	draw_circle(c + Vector2(0.3, 0.2) * s, s * 0.17, Color("#C99A12"))
-	draw_circle(c + Vector2(-0.45, 0.35) * s, s * 0.12, Color("#C99A12"))
+func _hdr(c: Color, k: float = 1.5) -> Color:
+	return Color(c.r * k, c.g * k, c.b * k, c.a)
 
 
-func _draw_map(font: Font) -> void:
-	# Scenery: paw prints, cheese and a mouse hole
-	for p in [Vector2(40.0, 230.0), Vector2(348.0, 205.0), Vector2(52.0, 318.0), Vector2(338.0, 330.0), Vector2(320.0, 258.0)]:
-		UIKit.paw(self, p, 9.0, Color(0.0, 0.0, 0.0, 0.14))
-	_draw_cheese(Vector2(44.0, 268.0), 17.0)
-	_draw_cheese(Vector2(344.0, 292.0), 14.0)
-	draw_circle(Vector2(350.0, 186.0), 20.0, UIKit.INK)
-	draw_circle(Vector2(350.0, 190.0), 15.0, Color("#1B0710"))
+# The painted forest (cover-cropped to the screen) and drifting fireflies behind the path.
+func _draw_forest() -> void:
+	if map_bg == null and ResourceLoader.exists("res://games/catdrop/art/map_bg.webp"):
+		map_bg = load("res://games/catdrop/art/map_bg.webp")
+	if map_bg != null:
+		var ts := map_bg.get_size()
+		var sw := ts.y * 390.0 / 844.0
+		draw_texture_rect_region(map_bg, Rect2(0.0, 0.0, 390.0, 844.0), Rect2((ts.x - sw) * 0.5, 0.0, sw, ts.y))
+	for i in 18:
+		var fx := 30.0 + fmod(float(i) * 83.7, 330.0)
+		var fy := 110.0 + fmod(float(i) * 137.3, 480.0)
+		var tw := 0.5 + 0.5 * sin(t * 1.6 + float(i) * 1.9)
+		var fc := UIKit.GOLD if i % 3 != 0 else UIKit.PINK
+		var pos := Vector2(fx + sin(t * 0.5 + float(i)) * 6.0, fy + cos(t * 0.4 + float(i) * 1.3) * 5.0)
+		draw_circle(pos, 5.0, Color(fc, 0.10 * tw))
+		draw_circle(pos, 2.0, _hdr(Color(fc, 0.35 + 0.5 * tw), 1.6))
 
-	# Title and story strip
-	UIKit.card(self, Rect2(14.0, 86.0, 362.0, 52.0), Color("#33283B"), Color("#1A131F"), UIKit.INK, 14)
-	UIKit.text_in(self, Rect2(14.0, 88.0, 362.0, 26.0), CHAPTER_TITLE, 15, UIKit.GOLD, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
-	var story_line: String = STORY[clampi(battle.wave - 1, 0, STORY.size() - 1)]
-	UIKit.body_in(self, Rect2(14.0, 112.0, 362.0, 24.0), story_line, 13, UIKit.CREAM, HORIZONTAL_ALIGNMENT_CENTER)
 
-	# The road
+func _draw_map(_font: Font) -> void:
+	_draw_forest()
+
+	# The road: a neon cyan edge, a dark rim, then worn dirt with a lighter middle
 	var baked := path_curve.get_baked_points()
-	draw_polyline(baked, UIKit.INK, 40.0, true)
-	draw_polyline(baked, Color("#3E2646"), 32.0, true)
-	draw_polyline(baked, Color(1.0, 1.0, 1.0, 0.05), 24.0, true)
-	var j := 0
-	while j + 3 < baked.size():
-		draw_line(baked[j], baked[j + 3], Color(UIKit.CREAM, 0.22), 3.0)
-		j += 8
-	var cur: int = clampi(battle.wave, 1, battle.MAX_WAVE)
-	var done_idx: int = int(float(path_offsets[cur - 1]) / maxf(path_curve.bake_interval, 0.01))
-	if done_idx > 1:
-		var done_pts := baked.slice(0, mini(done_idx + 1, baked.size()))
-		draw_polyline(done_pts, Color(UIKit.GOLD, 0.25), 16.0, true)
-		draw_polyline(done_pts, UIKit.AMBER_DARK, 12.0, true)
-		draw_polyline(done_pts, UIKit.GOLD, 7.0, true)
+	draw_polyline(baked, Color(UIKit.CYAN, 0.10), 50.0, true)
+	draw_polyline(baked, Color(UIKit.CYAN, 0.20), 42.0, true)
+	draw_polyline(baked, _hdr(Color(UIKit.CYAN, 0.9), 1.5), 37.0, true)
+	draw_polyline(baked, Color("#160B1C"), 33.0, true)
+	draw_polyline(baked, Color("#4F3224"), 29.0, true)
+	draw_polyline(baked, Color("#6E4631"), 16.0, true)
 
-	# Nodes
-	var n_nodes: int = battle.MAX_WAVE
-	for n in range(1, n_nodes + 1):
+	# Nodes: finished waves glow cyan, the next wave is a big magenta one with stars, the rest are locked
+	var cur: int = clampi(battle.wave, 1, battle.MAX_WAVE)
+	for n in range(1, battle.MAX_WAVE + 1):
 		var p := _path_point(n)
-		var boss: bool = n == n_nodes
-		if n < battle.wave:
-			draw_circle(p, 15.0, UIKit.INK)
-			draw_circle(p, 12.0, UIKit.GOLD)
-			UIKit.star(self, p, 8.0, UIKit.CREAM)
-		elif n == battle.wave:
-			var pulse := 1.0 + 0.1 * sin(t * 4.0)
-			draw_circle(p, 34.0 * pulse, Color(UIKit.PINK, 0.16))
-			draw_circle(p, 29.0 * pulse, Color(UIKit.PINK, 0.26))
-			draw_circle(p, 24.0, UIKit.INK)
-			draw_circle(p, 21.0, UIKit.GOLD)
-			draw_circle(p, 17.0, UIKit.PINK)
-			UIKit.text_in(self, Rect2(p - Vector2(20.0, 20.0), Vector2(40.0, 40.0)), str(n), 22, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
+		var boss: bool = n == battle.MAX_WAVE
+		if n < cur:
+			draw_circle(p, 30.0, Color(UIKit.CYAN, 0.18))
+			draw_circle(p, 22.0, _hdr(UIKit.CYAN, 1.5))
+			draw_circle(p, 17.5, Color("#06303B"))
+			UIKit.text_in(self, Rect2(p - Vector2(18.0, 18.0), Vector2(36.0, 36.0)), str(n), 18, UIKit.CREAM, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
+		elif n == cur:
+			var pulse := 1.0 + 0.08 * sin(t * 4.0)
+			draw_circle(p, 46.0 * pulse, Color(UIKit.PINK, 0.12))
+			draw_circle(p, 38.0 * pulse, Color(UIKit.PINK, 0.20))
+			draw_circle(p, 31.0, UIKit.INK)
+			draw_circle(p, 29.0, _hdr(UIKit.GOLD, 1.25))
+			draw_circle(p, 24.0, Color(0.95, 0.12, 0.78))
+			draw_circle(p + Vector2(-5.0, -8.0), 9.0, Color(1.0, 1.0, 1.0, 0.18))
+			UIKit.text_in(self, Rect2(p - Vector2(26.0, 26.0), Vector2(52.0, 52.0)), str(n), 28, UIKit.CREAM, UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
+			for k in 3:
+				UIKit.star(self, p + Vector2((float(k) - 1.0) * 17.0, -40.0 - (3.0 if k == 1 else 0.0)), 8.0, UIKit.GOLD)
 		else:
-			var r := 21.0 if boss else 14.0
+			var r := 25.0 if boss else 19.0
 			draw_circle(p, r + 3.0, UIKit.INK)
-			draw_circle(p, r, UIKit.GRAY)
+			draw_circle(p, r, Color("#1B1330"))
+			draw_circle(p, r - 2.0, Color("#241845"))
 			if boss:
-				UIKit.crown(self, p + Vector2(0.0, -2.0), 11.0, UIKit.AMBER)
+				UIKit.crown(self, p + Vector2(0.0, -3.0), 11.0, UIKit.GOLD)
+				UIKit.lock(self, p + Vector2(0.0, 13.0), 4.5, UIKit.MUTED)
 			else:
-				UIKit.text_in(self, Rect2(p - Vector2(14.0, 14.0), Vector2(28.0, 28.0)), str(n), 15, UIKit.MUTED, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
-		if boss and n <= battle.wave:
-			UIKit.crown(self, p + Vector2(0.0, -34.0), 12.0, UIKit.AMBER)
-	# Macho marks the next wave, bobbing above its node
-	var here := _path_point(cur)
-	var bob := sin(t * 3.0) * 3.0
-	var frame := Rect2(here + Vector2(-20.0, -70.0 + bob), Vector2(40.0, 40.0))
-	UIKit.panel(self, frame, UIKit.CRIMSON, UIKit.GOLD, 3, 9)
-	if battle.textures.has("macho"):
-		draw_texture_rect(battle.textures["macho"], frame.grow(-4.0), false)
-	draw_colored_polygon(PackedVector2Array([here + Vector2(-7.0, -29.0 + bob), here + Vector2(7.0, -29.0 + bob), here + Vector2(0.0, -21.0 + bob)]), UIKit.AMBER)
-	if bonus_balls > 0:
-		UIKit.text_in(self, Rect2(16.0, 372.0, 358.0, 22.0), "+%d bonus balls waiting" % bonus_balls, 13, UIKit.GOLD, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
+				UIKit.text_in(self, Rect2(p - Vector2(18.0, 20.0), Vector2(36.0, 24.0)), str(n), 16, Color("#8F83A8"), UIKit.INK, 3, HORIZONTAL_ALIGNMENT_CENTER)
+				UIKit.lock(self, p + Vector2(0.0, 10.0), 4.2, Color("#8F83A8"))
+		if boss and n < cur:
+			UIKit.crown(self, p + Vector2(0.0, -34.0), 12.0, UIKit.GOLD)
 
 
 func _draw_dropper() -> void:
@@ -1112,7 +1286,11 @@ func _draw_dropper() -> void:
 
 
 func _draw_board() -> void:
-	UIKit.board_frame(self, FIELD, UIKit.PINK, t)
+	var outer := FIELD.grow(10.0)
+	for i in 3:
+		draw_style_box(UIKit.box(Color(0, 0, 0, 0.10 + 0.07 * float(i)), Color(0, 0, 0, 0), 0, 22), Rect2(outer.position + Vector2(0.0, 9.0 - 2.0 * float(i)), outer.size).grow(7.0 - 2.0 * float(i)))
+	draw_style_box(UIKit.box(Color("#0F0820"), UIKit.INK, 4, 20), outer)
+	UIKit.neon_frame(self, FIELD.grow(6.0), 1.2)
 
 	# Funnels
 	for f: PackedVector2Array in [_funnel_left(), _funnel_right()]:
@@ -1129,11 +1307,11 @@ func _draw_board() -> void:
 	var cpiv := Vector2(CUP_SENSOR.get_center().x, 706.0)
 	draw_set_transform_matrix(Transform2D(Vector2(csx, 0.0), Vector2(0.0, csy), cpiv - Vector2(csx * cpiv.x, csy * cpiv.y) + Vector2(sin(t * 70.0) * 3.0 * cq, cup_dip)))
 	var cup_rect := Rect2(CUP_SENSOR.position.x - 6.0, 646.0, CUP_SENSOR.size.x + 12.0, 64.0)
-	UIKit.glow_rect(self, cup_rect, UIKit.GOLD, 10, 0.55 + 0.9 * flash)
+	UIKit.glow_rect(self, cup_rect, UIKit.CYAN.lerp(UIKit.GOLD, flash), 10, 0.55 + 0.9 * flash)
 	draw_rect(Rect2(CUP_SENSOR.position.x, 650.0, CUP_SENSOR.size.x, 56.0), Color("#26152B").lerp(Color("#6B4A12"), flash * 0.8))
-	draw_rect(CUP_WALL_LEFT, UIKit.GOLD)
-	draw_rect(CUP_WALL_RIGHT, UIKit.GOLD)
-	draw_rect(Rect2(CUP_WALL_LEFT.position.x, 700.0, 128.0, 6.0), UIKit.GOLD)
+	draw_rect(CUP_WALL_LEFT, Color("#C9D3E3"))
+	draw_rect(CUP_WALL_RIGHT, Color("#C9D3E3"))
+	draw_rect(Rect2(CUP_WALL_LEFT.position.x, 700.0, 128.0, 6.0), Color("#C9D3E3"))
 	UIKit.text_in(self, Rect2(CUP_SENSOR.position.x, 650.0, CUP_SENSOR.size.x, 56.0), "CUP", 20, UIKit.GOLD.lerp(Color.WHITE, flash), UIKit.INK, 5, HORIZONTAL_ALIGNMENT_CENTER)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -1148,13 +1326,13 @@ func _draw_board() -> void:
 		draw_circle(pp, 11.0 + 3.0 * pf, Color(COL_PEG, 0.10 + 0.25 * pf))
 		draw_circle(pp, 7.6 + 2.0 * pf, UIKit.INK)
 		draw_circle(pp, 5.6 + 1.5 * pf, COL_PEG.lerp(Color.WHITE, pf))
-		draw_circle(pp + Vector2(-1.6, -1.8), 1.8, Color("#FFB3D4"))
+		draw_circle(pp + Vector2(-1.6, -1.8), 1.8, Color("#D8FBFF"))
 
 	# Gates: glowing bumpers, cyan for x2, magenta for x3, gold for x4 and up
 	for i in GATES.size():
 		var r: Rect2 = GATES[i]["rect"]
 		var mult := gate_mult(i)
-		var col := UIKit.CYAN
+		var col := Color("#FF8A1F")
 		if mult >= 4:
 			col = UIKit.GOLD
 		elif mult == 3:
@@ -1216,11 +1394,12 @@ func _draw_glow() -> void:
 
 func _draw_hud() -> void:
 	# Coin pill
-	UIKit.card(self, Rect2(12.0, 10.0, 168.0, 54.0), Color("#33283B"), Color("#18111C"), UIKit.INK, 27)
-	UIKit.coin(self, Vector2(40.0, 37.0), 15.0)
+	var ox := 64.0 if state == "map" else 0.0   # the back arrow sits in the corner on the map
+	UIKit.card(self, Rect2(12.0 + ox, 10.0, 168.0 - ox, 54.0), Color("#33283B"), Color("#18111C"), UIKit.INK, 27)
+	UIKit.coin(self, Vector2(40.0 + ox, 37.0), 15.0)
 	var cs := 1.0 + 0.15 * coin_pulse
-	draw_set_transform_matrix(Transform2D(Vector2(cs, 0.0), Vector2(0.0, cs), Vector2(60.0, 37.0) - Vector2(60.0, 37.0) * cs))
-	UIKit.text_in(self, Rect2(60.0, 10.0, 116.0, 50.0), str(int(round(shown_coins))), 28, UIKit.GOLD, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT)
+	draw_set_transform_matrix(Transform2D(Vector2(cs, 0.0), Vector2(0.0, cs), Vector2(60.0 + ox, 37.0) - Vector2(60.0 + ox, 37.0) * cs))
+	UIKit.text_in(self, Rect2(60.0 + ox, 10.0, 116.0 - ox, 50.0), str(int(round(shown_coins))), 28 if ox == 0.0 else 22, UIKit.GOLD, UIKit.INK, 6, HORIZONTAL_ALIGNMENT_LEFT)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# Wave or balls pill
 	UIKit.card(self, Rect2(198.0, 10.0, 180.0, 54.0), Color("#33283B"), Color("#18111C"), UIKit.INK, 27)

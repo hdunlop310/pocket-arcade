@@ -10,11 +10,9 @@ const LIST := [
 		"scene": "res://games/catdrop/catdrop.tscn",
 		"bg": Color("#8A2A55"), "fg": Color("#FFD700"), "art": "res://games/catdrop/art/macho.png",
 	},
-	{"id": "carsort", "title": "CAR SORT", "tagline": "Coming soon", "scene": ""},
-	{"id": "", "title": "???", "tagline": "", "scene": ""},
-	{"id": "", "title": "???", "tagline": "", "scene": ""},
-	{"id": "", "title": "???", "tagline": "", "scene": ""},
-	{"id": "", "title": "???", "tagline": "", "scene": ""},
+	{"id": "carsort", "title": "", "tagline": "Coming soon", "scene": ""},
+	{"id": "", "title": "", "tagline": "Coming soon", "scene": ""},
+	{"id": "", "title": "", "tagline": "Coming soon", "scene": ""},
 ]
 
 

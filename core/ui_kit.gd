@@ -7,10 +7,10 @@ extends RefCounted
 
 const INK := Color("#0B0B0E")
 const INK_SOFT := Color("#1A141F")           # near-black with a plum tint, for pills and panels
-const PLUM := Color("#1E121F")                # the base background
-const PLUM_LIGHT := Color("#35203A")
-const CHARCOAL := Color("#2A1B2D")            # soft plum charcoal panels
-const CHARCOAL_LIGHT := Color("#40294A")
+const PLUM := Color("#1A0B2E")                # the base background (deep purple)
+const PLUM_LIGHT := Color("#2A1644")
+const CHARCOAL := Color("#2A1644")            # glassy purple panels
+const CHARCOAL_LIGHT := Color("#3A2262")
 const CRIMSON := Color("#6B1D3F")             # burgundy accent (portrait frames, cards)
 const CRIMSON_DARK := Color("#1E121F")        # kept for old callers: the base plum
 const CRIMSON_LIGHT := Color("#35203A")
@@ -19,11 +19,11 @@ const MAGENTA := Color("#FF2E93")
 const GOLD := Color("#FFD700")                # currency
 const AMBER := Color("#F2A81D")               # button base gold
 const AMBER_DARK := Color("#B7770B")
-const CYAN := Color("#27E1F2")
+const CYAN := Color("#00F0FF")
 const CREAM := Color("#FFFFFF")               # crisp white headers
 const MUTED := Color("#D0C2D3")                # secondary / body text
 const GRAY := Color("#6B5C6E")                 # disabled grey
-const PANEL_BORDER := Color("#412945")
+const PANEL_BORDER := Color("#4B2B73")
 const GREEN := Color("#5BD66B")
 const GREEN_DARK := Color("#2E9A3E")
 
@@ -83,7 +83,7 @@ static func box(fill: Color, border: Color = INK, bw: int = 4, radius: int = 14,
 
 
 # --- Baked UI kit (tools/bake_ui.gd -> art/ui/*.png): lit, bevelled, glossy 9-slice textures ---------
-const BAKED_MARGIN := {"big": 26, "small": 11, "panel": 22, "pill": 28, "card_small": 16}
+const BAKED_MARGIN := {"big": 26, "small": 11, "panel": 22, "pill": 28, "card_small": 16, "neon_frame": 24}
 static var _baked := {}
 static var _coin_tex: Texture2D
 
@@ -119,6 +119,8 @@ static func kit_color(fill: Color) -> String:
 		return "gold"
 	if fill.h >= 0.25 and fill.h <= 0.42 and fill.s > 0.3:
 		return "green"
+	if fill.h >= 0.45 and fill.h <= 0.55 and fill.s > 0.4:
+		return "cyan"
 	if (fill.h >= 0.82 or fill.h <= 0.03) and fill.s > 0.5:
 		return "magenta"
 	return ""
@@ -327,6 +329,24 @@ static func corner_accents(ci: CanvasItem, rect: Rect2, col: Color, len: float =
 		ci.draw_line(o, o + (c[2] as Vector2) * len, col, width)
 
 
+# A glowing cyan-to-magenta tile frame (baked), drawn at `hdr` brightness so the bloom picks it up.
+static func neon_frame(ci: CanvasItem, rect: Rect2, hdr: float = 1.5) -> void:
+	var key := "neon|%.2f" % hdr
+	if not _baked.has(key):
+		var base := baked("neon_frame", BAKED_MARGIN["neon_frame"])
+		if base == null:
+			_baked[key] = null
+		else:
+			var sb: StyleBoxTexture = base.duplicate()
+			sb.modulate_color = Color(hdr, hdr, hdr, 1.0)
+			_baked[key] = sb
+	var st: StyleBoxTexture = _baked[key]
+	if st != null:
+		ci.draw_style_box(st, rect)
+	else:
+		glow_rect(ci, rect, CYAN, 18, 0.8)
+
+
 # The play-field frame: soft shadow, a dark metallic bezel, a pulsing neon stroke, and a dark inner field.
 static func board_frame(ci: CanvasItem, field: Rect2, glow_col: Color, t: float) -> void:
 	var outer := field.grow(10.0)
@@ -388,6 +408,17 @@ static func lock(ci: CanvasItem, c: Vector2, s: float, fill: Color = MUTED) -> v
 	ci.draw_style_box(pill(fill.lightened(0.3), fill.darkened(0.25), INK, int(s * 0.3), 2), body)
 	ci.draw_circle(c + Vector2(0.0, s * 0.5), s * 0.22, INK)
 	ci.draw_rect(Rect2(c + Vector2(-s * 0.08, s * 0.5), Vector2(s * 0.16, s * 0.4)), INK)
+
+
+static func gear(ci: CanvasItem, c: Vector2, r: float, col: Color = CYAN) -> void:
+	for i in 8:
+		var d := Vector2.from_angle(float(i) * PI / 4.0)
+		ci.draw_line(c + d * r * 0.6, c + d * r * 1.12, INK, r * 0.62)
+		ci.draw_line(c + d * r * 0.6, c + d * r * 1.12, col, r * 0.44)
+	ci.draw_circle(c, r * 0.9, INK)
+	ci.draw_circle(c, r * 0.78, col)
+	ci.draw_circle(c, r * 0.36, INK)
+	ci.draw_circle(c, r * 0.26, Color("#1A0B2E"))
 
 
 static func paw(ci: CanvasItem, c: Vector2, s: float, col: Color) -> void:
