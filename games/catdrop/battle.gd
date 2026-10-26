@@ -777,8 +777,9 @@ var panel_tex: Texture2D = load("res://games/catdrop/art/ui_bottom_panel.png") i
 func _draw_field() -> void:
 	if frame_tex == null:
 		frame_tex = load("res://games/catdrop/art/battle_frame.png") if ResourceLoader.exists("res://games/catdrop/art/battle_frame.png") else null
-	var outer := FIELD.grow(12.0)
-	draw_style_box(UIKit.box(Color("#2A1F36"), Color(0, 0, 0, 0), 0, 6), FIELD.grow(-4.0))
+	# The stone frame holds only the tile grid; the lanes above it are the graveyard itself
+	var outer := Rect2(4.0, 404.0, 382.0, 328.0)
+	draw_style_box(UIKit.box(Color("#2A1F36"), Color(0, 0, 0, 0), 0, 6), outer.grow(-16.0))
 	if frame_tex != null:
 		UIKit.nine_slice(self, frame_tex, outer, 168.0, 20.0)
 	else:
@@ -884,6 +885,7 @@ func _draw() -> void:
 				UIKit.glow_rect(self, cr, UIKit.GOLD, 10, 1.0)
 			_draw_portrait(key, Rect2(cr.position.x + 8.0, cr.position.y + 4.0, 46.0, 38.0), false)
 			UIKit.text_in(self, Rect2(cr.position.x, cr.position.y + 40.0, cr.size.x, 16.0), "%d spare" % spare(key), 11, UIKit.GOLD if spare(key) > 0 else COL_MUTED, UIKit.INK, 4, HORIZONTAL_ALIGNMENT_CENTER)
+		draw_style_box(UIKit.box(Color(0.04, 0.0, 0.1, 0.6), Color(0, 0, 0, 0), 0, 10), Rect2(FIELD.position.x + 6.0, 278.0, FIELD.size.x - 12.0, 44.0))
 		var hint := "Tap a cat above, then a tile. Tap a placed cat to pick it up."
 		UIKit.body_in(self, Rect2(FIELD.position.x, 282.0, FIELD.size.x, 18.0), hint, 12, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 		UIKit.body_in(self, Rect2(FIELD.position.x, 300.0, FIELD.size.x, 18.0), "Raised: +range, takes more damage.   Hole: tougher, less range.", 11, COL_MUTED, HORIZONTAL_ALIGNMENT_CENTER)
