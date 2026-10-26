@@ -770,26 +770,19 @@ func _draw_cat_anim(i: int, center: Vector2, dead: bool) -> void:
 # The battlefield: a stone frame around a grassy graveyard lawn with a neon edge.
 const PANEL_POS := Vector2(20.0, 136.0)
 const PANEL_SIZE := Vector2(350.0, 137.0)
+var frame_tex: Texture2D
 var panel_tex: Texture2D = load("res://games/catdrop/art/ui_bottom_panel.png") if ResourceLoader.exists("res://games/catdrop/art/ui_bottom_panel.png") else null
 
 
 func _draw_field() -> void:
-	var outer := FIELD.grow(10.0)
-	for i in 3:
-		draw_style_box(UIKit.box(Color(0, 0, 0, 0.10 + 0.07 * float(i)), Color(0, 0, 0, 0), 0, 22), Rect2(outer.position + Vector2(0.0, 9.0 - 2.0 * float(i)), outer.size).grow(7.0 - 2.0 * float(i)))
-	draw_style_box(UIKit.box(Color("#3B3550"), UIKit.INK, 4, 20), outer)
-	draw_style_box(UIKit.box(Color("#1F3A2A"), UIKit.INK, 3, 12), FIELD)
-	# darker grass toward the top, mown stripes, a few tufts and gravestones
-	for k in 8:
-		var y := FIELD.position.y + float(k) * 74.0
-		draw_rect(Rect2(FIELD.position.x + 3.0, y + 3.0, FIELD.size.x - 6.0, 37.0), Color(1.0, 1.0, 1.0, 0.025 if k % 2 == 0 else 0.0))
-	draw_rect(Rect2(FIELD.position.x + 3.0, FIELD.position.y + 3.0, FIELD.size.x - 6.0, 70.0), Color(0.05, 0.0, 0.15, 0.35))
-	for g in [Vector2(34.0, 372.0), Vector2(356.0, 360.0), Vector2(180.0, 330.0)]:
-		draw_rect(Rect2(g.x - 9.0, g.y - 6.0, 18.0, 24.0), Color("#6A6478"))
-		draw_circle(g + Vector2(0.0, -6.0), 9.0, Color("#6A6478"))
-		draw_rect(Rect2(g.x - 1.5, g.y - 6.0, 3.0, 12.0), Color("#3B3550"))
-		draw_rect(Rect2(g.x - 5.0, g.y - 2.0, 10.0, 3.0), Color("#3B3550"))
-	UIKit.neon_frame(self, FIELD.grow(6.0), 0.9)
+	if frame_tex == null:
+		frame_tex = load("res://games/catdrop/art/battle_frame.png") if ResourceLoader.exists("res://games/catdrop/art/battle_frame.png") else null
+	var outer := FIELD.grow(12.0)
+	draw_style_box(UIKit.box(Color("#2A1F36"), Color(0, 0, 0, 0), 0, 6), FIELD.grow(-4.0))
+	if frame_tex != null:
+		UIKit.nine_slice(self, frame_tex, outer, 168.0, 20.0)
+	else:
+		draw_style_box(UIKit.box(Color("#3B3550"), UIKit.INK, 4, 20), outer)
 
 
 func _draw() -> void:
@@ -825,7 +818,7 @@ func _draw() -> void:
 		var key: String = grid[i]
 		match kind:
 			"flat":
-				UIKit.panel(self, r, Color("#35503A"), UIKit.INK, 3, 10)
+				UIKit.panel(self, r, Color("#45304F"), UIKit.INK, 3, 10)
 			"raised":
 				UIKit.panel(self, r, Color("#6A6478"), UIKit.INK, 3, 10, 8)
 				draw_rect(Rect2(r.position.x + 5.0, r.position.y + 4.0, r.size.x - 10.0, 4.0), Color("#9A9AAE"))

@@ -107,7 +107,9 @@ var map_rows := {}  # "cat:macho" / "up:balls" -> {"desc", "pips", "buy", "lvl",
 var fx := Fx.new()
 var team_label: Label
 var map_bg: Texture2D
+var road_tex: Texture2D
 var drop_bg: Texture2D
+var battle_bg: Texture2D
 var map_bar: Panel           # the bottom bar on the map: caption and the cat cards
 var map_caption: Label
 var map_cards := {}          # cat key or "board" -> {btn, badge, lock, alert}
@@ -1138,10 +1140,12 @@ func _on_run_failed() -> void:
 # ----------------------------------------------------------------------------
 
 
+# Wave nodes sit on the painted road (`map_road.png`), measured from its centreline.
+const ROAD_NODES := [Vector2(147.5, 585.0), Vector2(228.7, 538.3), Vector2(300.4, 491.7), Vector2(293.4, 445.0), Vector2(210.2, 398.3), Vector2(110.0, 351.7), Vector2(85.3, 305.0), Vector2(145.5, 258.3), Vector2(227.5, 211.7), Vector2(269.9, 165.0)]
+
+
 func _path_point(n: int) -> Vector2:
-	# Node n (1..10) climbs from the bottom of the map to the boss at the top, wiggling left and right.
-	var frac := float(n - 1) / float(battle.MAX_WAVE - 1)
-	return Vector2(195.0 + sin(float(n) * 1.25 + 0.6) * 112.0, lerpf(PATH_BOTTOM, PATH_TOP, frac))
+	return ROAD_NODES[clampi(n - 1, 0, ROAD_NODES.size() - 1)]
 
 
 func _build_path() -> void:
@@ -1160,6 +1164,14 @@ func _build_path() -> void:
 
 func _draw_wallpaper() -> void:
 	draw_rect(Rect2(0.0, 0.0, 390.0, 844.0), Color("#0D0518"))
+	if state == "battle":
+		if battle_bg == null and ResourceLoader.exists("res://games/catdrop/art/battle_bg.webp"):
+			battle_bg = load("res://games/catdrop/art/battle_bg.webp")
+		if battle_bg != null:
+			var bs := battle_bg.get_size()
+			var bw := bs.y * 390.0 / 844.0
+			draw_texture_rect_region(battle_bg, Rect2(0.0, 0.0, 390.0, 844.0), Rect2((bs.x - bw) * 0.5, 0.0, bw, bs.y))
+			return
 	if state == "drop":
 		if drop_bg == null and ResourceLoader.exists("res://games/catdrop/art/drop_bg.png"):
 			drop_bg = load("res://games/catdrop/art/drop_bg.png")
@@ -1200,13 +1212,21 @@ func _draw_map(_font: Font) -> void:
 	_draw_forest()
 
 	# The road: a neon cyan edge, a dark rim, then worn dirt with a lighter middle
+	if road_tex == null and ResourceLoader.exists("res://games/catdrop/art/map_road.png"):
+		road_tex = load("res://games/catdrop/art/map_road.png")
 	var baked := path_curve.get_baked_points()
-	draw_polyline(baked, Color(UIKit.CYAN, 0.10), 50.0, true)
-	draw_polyline(baked, Color(UIKit.CYAN, 0.20), 42.0, true)
-	draw_polyline(baked, _hdr(Color(UIKit.CYAN, 0.9), 1.5), 37.0, true)
-	draw_polyline(baked, Color("#160B1C"), 33.0, true)
-	draw_polyline(baked, Color("#4F3224"), 29.0, true)
-	draw_polyline(baked, Color("#6E4631"), 16.0, true)
+	if road_tex != null:
+		var rs := road_tex.get_size()
+		var rw := rs.y * 390.0 / 844.0
+		draw_texture_rect_region(road_tex, Rect2(0.0, 0.0, 390.0, 844.0), Rect2((rs.x - rw) * 0.5, 0.0, rw, rs.y))
+		baked = PackedVector2Array()
+	if baked.size() > 1:
+		draw_polyline(baked, Color(UIKit.CYAN, 0.10), 50.0, true)
+		draw_polyline(baked, Color(UIKit.CYAN, 0.20), 42.0, true)
+		draw_polyline(baked, _hdr(Color(UIKit.CYAN, 0.9), 1.5), 37.0, true)
+		draw_polyline(baked, Color("#160B1C"), 33.0, true)
+		draw_polyline(baked, Color("#4F3224"), 29.0, true)
+		draw_polyline(baked, Color("#6E4631"), 16.0, true)
 
 	# Nodes: finished waves glow cyan, the next wave is a big magenta one with stars, the rest are locked
 	var cur: int = clampi(battle.wave, 1, battle.MAX_WAVE)

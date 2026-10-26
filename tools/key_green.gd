@@ -1,6 +1,7 @@
 extends SceneTree
 # Keys the flat #00FF00 background out of a Gemini cut-out and crops to the content.
-# Usage: GODOT --headless --path . --script tools/key_green.gd -- <in> <out> [max_width]
+# Usage: GODOT --headless --path . --script tools/key_green.gd -- <in> <out> [max_width] [keep]
+# "keep" skips the crop so the image still lines up with a full-screen background.
 
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -28,8 +29,8 @@ func _init() -> void:
 				miny = mini(miny, y)
 				maxx = maxi(maxx, x)
 				maxy = maxi(maxy, y)
-	var out := img.get_region(Rect2i(minx, miny, maxx - minx + 1, maxy - miny + 1))
-	if args.size() > 2 and out.get_width() > int(args[2]):
+	var out := img if args.size() > 3 and args[3] == "keep" else img.get_region(Rect2i(minx, miny, maxx - minx + 1, maxy - miny + 1))
+	if args.size() > 2 and int(args[2]) > 0 and out.get_width() > int(args[2]):
 		var k := float(args[2]) / float(out.get_width())
 		out.resize(int(args[2]), int(out.get_height() * k), Image.INTERPOLATE_LANCZOS)
 	out.save_png(args[1])

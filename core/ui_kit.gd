@@ -348,6 +348,20 @@ static func neon_frame(ci: CanvasItem, rect: Rect2, hdr: float = 1.5) -> void:
 
 
 # The play-field frame: soft shadow, a dark metallic bezel, a pulsing neon stroke, and a dark inner field.
+# Draws a texture as a 9-slice: the source corners (src_m px) are scaled down to dst_m px, edges stretch.
+static func nine_slice(ci: CanvasItem, tex: Texture2D, rect: Rect2, src_m: float, dst_m: float) -> void:
+	var ts := tex.get_size()
+	var xs := [0.0, src_m, ts.x - src_m, ts.x]
+	var ys := [0.0, src_m, ts.y - src_m, ts.y]
+	var dx := [rect.position.x, rect.position.x + dst_m, rect.end.x - dst_m, rect.end.x]
+	var dy := [rect.position.y, rect.position.y + dst_m, rect.end.y - dst_m, rect.end.y]
+	for j in 3:
+		for i in 3:
+			if i == 1 and j == 1:
+				continue
+			ci.draw_texture_rect_region(tex, Rect2(dx[i], dy[j], dx[i + 1] - dx[i], dy[j + 1] - dy[j]), Rect2(xs[i], ys[j], xs[i + 1] - xs[i], ys[j + 1] - ys[j]))
+
+
 static func board_frame(ci: CanvasItem, field: Rect2, glow_col: Color, t: float) -> void:
 	var outer := field.grow(10.0)
 	for i in 3:
